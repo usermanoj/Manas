@@ -1,0 +1,32 @@
+export const BRAND = {
+  name: 'Manas',
+  guideName: 'Manas Guide',
+  tagline: 'Your wellbeing companion',
+  disclosure: 'Manas is an AI wellbeing companion. It is not a psychologist, psychiatrist, counsellor, or medical professional. It does not diagnose, treat, or prescribe.',
+  prototypeLabel: 'Prototype wellbeing content — not clinically reviewed. This does not provide diagnosis, treatment or emergency support.',
+  hackathonDisclaimer: 'This is a synthetic-data hackathon demonstration. It is not intended for real mental-health support.',
+  colors: {
+    primary: '#4A7C59',
+    primaryLight: '#6B9B7A',
+    secondary: '#D4A574',
+    background: '#FAF8F5',
+    surface: '#FFFFFF',
+    text: '#2D3748',
+    textMuted: '#718096',
+    accent: '#E8B4B8',
+    warning: '#D69E2E',
+    error: '#E53E3E',
+    success: '#38A169',
+  },
+  typography: {
+    fontFamily: 'Inter, system-ui, sans-serif',
+    headingSize: 'text-2xl md:text-3xl',
+    bodySize: 'text-base md:text-lg',
+    smallSize: 'text-sm',
+  },
+  spacing: {
+    pageMaxWidth: 'max-w-4xl',
+    sectionPadding: 'py-8 md:py-12',
+    cardPadding: 'p-6',
+  },
+} as const;
