@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { BRAND } from '@/lib/config/brand';
 import "./globals.css";
 
 const inter = Inter({
@@ -8,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Manas — AI Wellbeing Companion",
-  description: "Manas is an AI wellbeing companion for adults experiencing everyday work-related stress. Prototype demonstration.",
+  title: `${BRAND.name} — ${BRAND.tagline}`,
+  description: BRAND.disclosure,
 };
 
 export default function RootLayout({
