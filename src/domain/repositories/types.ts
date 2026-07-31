@@ -102,6 +102,7 @@ export interface Handoff {
   status: string;
   structuredSummary: StructuredCheckIn;
   excludedEntries: string[];
+  userNote?: string;
   sentAt?: Date;
   version: number;
 }

@@ -207,6 +207,28 @@ describe('Handoff / Consent State Machine', () => {
       expect(result.allowed).toBe(false);
     });
   });
+
+  describe('Day 3 scope — reachable transitions', () => {
+    it('should transition DRAFT → USER_REVIEW via submit_for_review', () => {
+      const result = validateHandoffTransition('DRAFT', 'submit_for_review');
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.nextStatus).toBe('USER_REVIEW');
+      }
+    });
+
+    // NOTE: USER_REVIEW → CONSENTED (grant_consent) transition is defined in
+    // the state machine but is NOT reachable through the Day 3 API.
+    // No consent endpoint exists in Day 3 scope. This transition will be
+    // activated when the consent endpoint is built in a later phase.
+    it('USER_REVIEW → CONSENTED transition exists in state machine but is not reachable via Day 3 API', () => {
+      const result = validateHandoffTransition('USER_REVIEW', 'grant_consent');
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.nextStatus).toBe('CONSENTED');
+      }
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

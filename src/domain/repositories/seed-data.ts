@@ -90,19 +90,6 @@ export const SEED_PROVIDERS: Provider[] = [
     bio: 'Priya Kapoor is a certified wellness coach who facilitates mindfulness groups and one-to-one stress-management sessions for working professionals.',
     isFictionalDemo: true,
   },
-  {
-    id: 'provider-dr-neha-iyer',
-    profileId: 'profile-dr-neha-iyer',
-    name: 'Dr. Neha Iyer',
-    title: 'Psychiatrist & Psychotherapist',
-    languages: ['en', 'hi', 'ta'],
-    focusAreas: ['trauma', 'PTSD', 'chronic stress', 'somatic therapy'],
-    availability: 'Wed–Sun, 11 AM – 6 PM IST',
-    sessionType: 'Video',
-    priceRange: '₹2,500 – ₹4,000 per session',
-    bio: 'Dr. Neha Iyer is a psychiatrist and psychotherapist with expertise in trauma-informed care and somatic experiencing. She offers integrative treatment plans.',
-    isFictionalDemo: true,
-  },
 ];
 
 // ─── Content Modules ───────────────────────────────────────────────────────────
@@ -112,7 +99,7 @@ export const SEED_CONTENT_MODULES: ContentModule[] = [
     id: 'module-pause-reflect',
     title: 'Pause and Reflect',
     purpose: 'A guided micro-exercise that helps the user slow down, notice their current state, and reflect on what they need right now.',
-    status: 'DRAFT',
+    status: 'PENDING_CLINICAL_REVIEW',
     currentVersionId: 'module-pause-reflect-v1',
     primaryLanguage: 'en',
   },
@@ -157,7 +144,7 @@ export const SEED_CONTENT_MODULE_VERSIONS: ContentModuleVersion[] = [
       'User reports dissociation or severe distress.',
     ],
     language: 'en',
-    reviewStatus: 'DRAFT',
+    reviewStatus: 'PENDING_CLINICAL_REVIEW',
     translationStatus: 'PENDING',
   },
 ];

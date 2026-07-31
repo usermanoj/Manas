@@ -60,7 +60,7 @@ const ROUTING_DISPLAY: Record<RoutingState, { title: string; description: string
   },
   URGENT_SUPPORT_INFORMATION: {
     title: 'Support information provided',
-    description: 'This is a synthetic demonstration. If you are in distress, please reach out to a qualified professional or emergency service.',
+    description: 'This demonstration cannot provide urgent or emergency support. If you may be in immediate danger, contact your local emergency services or seek support from a trusted person nearby. This is a prototype demonstration. No live monitoring is available.',
   },
   HUMAN_REVIEW_REQUIRED: {
     title: 'This type of situation may need human support. This demonstration does not provide live monitoring.',
@@ -269,8 +269,10 @@ function SummaryPageContent(): React.ReactNode {
       }));
       setPhase('confirmed');
 
-      // Clear check-in sessionStorage after successful confirm.
+      // Store confirmed summary in sessionStorage for downstream pages
+      // (pause-reflect module, handoff) and clear check-in data.
       try {
+        sessionStorage.setItem('manas-confirmed-summary', JSON.stringify(formData));
         sessionStorage.removeItem('manas-check-in');
       } catch {
         // Ignore.
@@ -537,22 +539,63 @@ function SummaryPageContent(): React.ReactNode {
               )}
             </div>
 
-            {/* Navigation */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Link
-                data-testid="continue-module"
-                href="/module/pause-reflect"
-                className="bg-primary text-white hover:bg-primary-light rounded-lg px-6 py-3 text-lg font-medium transition-colors text-center"
-              >
-                Continue to Pause & Reflect
-              </Link>
-              <Link
-                href="/"
-                className="text-primary hover:underline flex items-center justify-center px-6 py-3 text-lg font-medium"
-              >
-                Back to Home
-              </Link>
-            </div>
+            {/* Navigation — routing-aware CTAs */}
+            {confirmResponse.routingState === 'GENERAL_WELLBEING' && (
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Link
+                  data-testid="continue-module"
+                  href="/module/pause-reflect"
+                  className="bg-primary text-white hover:bg-primary-light rounded-lg px-6 py-3 text-lg font-medium transition-colors text-center"
+                >
+                  Continue to Pause and Reflect
+                </Link>
+                <Link
+                  href="/professionals"
+                  className="text-primary hover:underline flex items-center justify-center px-6 py-3 text-lg font-medium"
+                >
+                  Skip to Professionals
+                </Link>
+              </div>
+            )}
+
+            {confirmResponse.routingState === 'PROFESSIONAL_SUPPORT_SUGGESTED' && (
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Link
+                  href="/professionals"
+                  className="bg-primary text-white hover:bg-primary-light rounded-lg px-6 py-3 text-lg font-medium transition-colors text-center"
+                >
+                  View Professionals
+                </Link>
+                <Link
+                  href="/module/pause-reflect"
+                  className="text-primary hover:underline flex items-center justify-center px-6 py-3 text-lg font-medium"
+                >
+                  Optional: Pause and Reflect first
+                </Link>
+              </div>
+            )}
+
+            {confirmResponse.routingState === 'URGENT_SUPPORT_INFORMATION' && (
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Link
+                  href="/"
+                  className="bg-primary text-white hover:bg-primary-light rounded-lg px-6 py-3 text-lg font-medium transition-colors text-center"
+                >
+                  Return to Home
+                </Link>
+              </div>
+            )}
+
+            {confirmResponse.routingState === 'HUMAN_REVIEW_REQUIRED' && (
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Link
+                  href="/"
+                  className="bg-primary text-white hover:bg-primary-light rounded-lg px-6 py-3 text-lg font-medium transition-colors text-center"
+                >
+                  Return to Home
+                </Link>
+              </div>
+            )}
           </div>
         )}
       </div>
