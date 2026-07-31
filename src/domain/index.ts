@@ -87,6 +87,9 @@ export type {
   PostGenSafetyResult,
 } from './safety';
 
+// ─── Content ───────────────────────────────────────────────────────────────────
+export { PAUSE_REFLECT_MODULE, PAUSE_REFLECT_VERSION, PAUSE_REFLECT_STEPS } from './content';
+
 // ─── Check-In ──────────────────────────────────────────────────────────────────
 export { CheckInOrchestrator } from './check-in';
 export type {
@@ -95,3 +98,24 @@ export type {
   ConfirmResult,
   CheckInOrchestratorDeps,
 } from './check-in';
+
+// ─── Handoff ────────────────────────────────────────────────────────────────────
+export {
+  createDraftHandoff,
+  updateHandoff,
+  excludeField,
+  submitForReview,
+  buildPreview,
+} from './handoff';
+export type { HandoffServiceDeps } from './handoff';
+export {
+  CreateHandoffRequestSchema,
+  UpdateHandoffRequestSchema,
+  HandoffResponseSchema,
+} from './handoff';
+export type {
+  CreateHandoffRequest,
+  UpdateHandoffRequest,
+  HandoffResponse,
+  HandoffPreview,
+} from './handoff';

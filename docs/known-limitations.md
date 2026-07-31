@@ -97,3 +97,32 @@ six check-in questions and produces the same structured output.
 
 ### Input limits
 Primary concern text is limited to 1–1000 characters.
+
+## Day 3 implementation status
+
+### Pause and Reflect module
+The Pause and Reflect module is prototype wellbeing content with status
+`PENDING_CLINICAL_REVIEW`. It has not been clinically reviewed or approved.
+Reflections entered by the user are browser-only and may be lost on page
+refresh — they are not persisted to any backend.
+
+### Professional directory
+All professional profiles (Dr. Maya Rao, Dr. Vikram Singh, Priya Kapoor)
+are fictional demonstrations marked `isFictionalDemo: true`. No real
+clinician-client relationship is created.
+
+### Draft handoff
+Handoffs are saved as `DRAFT` only. The maximum reachable state in Day 3
+is `USER_REVIEW`. The consent-and-send step is deferred to Day 4 — no
+handoff data leaves the client application in the current prototype.
+
+### Data persistence
+No raw conversation text or free-form reflection text is persisted in any
+mode. Only structured, user-reviewed summaries and version metadata are
+stored.
+
+### Supabase mode
+Supabase RLS policies prevent cross-user data access but have not been
+penetration-tested. Supabase mode is a controlled architectural
+demonstration; production-grade authentication, authorization, and
+multi-tenant isolation are not claimed.
