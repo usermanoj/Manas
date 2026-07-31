@@ -9,6 +9,7 @@ export {
 export type {
   AIOutput,
   StructuredCheckIn,
+  CompleteCheckInResponse,
   ModelGateway,
   ModelGatewayContext,
 } from './ai';
@@ -73,3 +74,24 @@ export type {
 // ─── Audit ─────────────────────────────────────────────────────────────────────
 export { InMemoryAuditLogger } from './audit';
 export type { AuditLogger } from './audit';
+
+// ─── Safety ────────────────────────────────────────────────────────────────────
+export { checkPreGenSafety, checkPostGenSafety } from './safety';
+export { determineRouting } from './safety';
+export { SAFETY_POLICY_VERSION } from './safety';
+export type {
+  RoutingState,
+  RoutingDecision,
+  SafetyAction,
+  PreGenSafetyResult,
+  PostGenSafetyResult,
+} from './safety';
+
+// ─── Check-In ──────────────────────────────────────────────────────────────────
+export { CheckInOrchestrator } from './check-in';
+export type {
+  StepResult,
+  DraftCompleteResult,
+  ConfirmResult,
+  CheckInOrchestratorDeps,
+} from './check-in';

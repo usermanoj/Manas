@@ -58,3 +58,106 @@ export const SAFE_FALLBACK: AIOutput = {
   model_version: 'fallback',
   prompt_version: 'fallback-v1',
 };
+
+// ---------------------------------------------------------------------------
+// Check-In API Contract Schemas
+// ---------------------------------------------------------------------------
+
+/**
+ * Check-in step enum — identifies which structured question is being asked.
+ */
+export const CheckInStepSchema = z.enum([
+  'primary_concern', 'duration', 'sleep_impact',
+  'daily_functioning_impact', 'support_preference', 'safety_response'
+]);
+export type CheckInStep = z.infer<typeof CheckInStepSchema>;
+
+/**
+ * POST /api/check-in — create a new check-in session.
+ */
+export const CreateCheckInRequestSchema = z.object({
+  mode: z.enum(['GUEST', 'CONNECTED_CARE']),
+  language: z.enum(['en']).default('en'),
+});
+export type CreateCheckInRequest = z.infer<typeof CreateCheckInRequestSchema>;
+
+export const CreateCheckInResponseSchema = z.object({
+  id: z.string(),
+  status: z.literal('INITIATED'),
+  createdAt: z.string(),
+});
+export type CreateCheckInResponse = z.infer<typeof CreateCheckInResponseSchema>;
+
+/**
+ * POST /api/check-in/:id/message — post a user message and receive AI response.
+ */
+export const PostMessageRequestSchema = z.object({
+  content: z.string().min(1).max(1000),
+  currentStep: CheckInStepSchema,
+  structuredAnswers: StructuredCheckInSchema.partial(),
+});
+export type PostMessageRequest = z.infer<typeof PostMessageRequestSchema>;
+
+export const PostMessageResponseSchema = z.object({
+  userFacingResponse: z.string(),
+  extractedUpdates: z.record(z.string(), z.unknown()).default({}),
+  requestedFollowUp: z.string().nullable(),
+  modelVersion: z.string(),
+  promptVersion: z.string(),
+  fallbackUsed: z.boolean(),
+});
+export type PostMessageResponse = z.infer<typeof PostMessageResponseSchema>;
+
+/**
+ * POST /api/check-in/:id/complete — complete the check-in and get DRAFT summary.
+ */
+export const CompleteCheckInResponseSchema = z.object({
+  draftSummary: StructuredCheckInSchema,
+  provisionalRouting: z.object({
+    routingState: z.enum([
+      'GENERAL_WELLBEING',
+      'PROFESSIONAL_SUPPORT_SUGGESTED',
+      'HUMAN_REVIEW_REQUIRED',
+      'URGENT_SUPPORT_INFORMATION',
+    ]),
+    policyVersion: z.string(),
+    triggeredRules: z.array(z.string()),
+  }),
+  modelVersion: z.string(),
+  promptVersion: z.string(),
+  policyVersion: z.string(),
+});
+export type CompleteCheckInResponse = z.infer<typeof CompleteCheckInResponseSchema>;
+
+/**
+ * POST /api/check-in/:id/confirm — user submits edited/final summary.
+ */
+export const ConfirmCheckInRequestSchema = z.object({
+  confirmedSummary: StructuredCheckInSchema,
+});
+export type ConfirmCheckInRequest = z.infer<typeof ConfirmCheckInRequestSchema>;
+
+export const ConfirmCheckInResponseSchema = z.object({
+  confirmedSummary: StructuredCheckInSchema,
+  routingDecision: z.object({
+    routingState: z.enum([
+      'GENERAL_WELLBEING',
+      'PROFESSIONAL_SUPPORT_SUGGESTED',
+      'HUMAN_REVIEW_REQUIRED',
+      'URGENT_SUPPORT_INFORMATION',
+    ]),
+    policyVersion: z.string(),
+    triggeredRules: z.array(z.string()),
+    timestamp: z.string(),
+    requestId: z.string(),
+  }),
+  routingState: z.enum([
+    'GENERAL_WELLBEING',
+    'PROFESSIONAL_SUPPORT_SUGGESTED',
+    'HUMAN_REVIEW_REQUIRED',
+    'URGENT_SUPPORT_INFORMATION',
+  ]),
+  policyVersion: z.string(),
+  edited: z.boolean(),
+});
+export type ConfirmCheckInResponse = z.infer<typeof ConfirmCheckInResponseSchema>;

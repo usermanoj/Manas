@@ -12,6 +12,14 @@ node_modules/
 # debug
 npm-debug.log*
 
+# test artifacts
+test-results/
+playwright-report/
+
+# qoder internal
+.qoder/
+
 # misc
 .DS_Store
 *.tsbuildinfo
+*.patch
