@@ -1,14 +1,15 @@
-import Link from 'next/link';
-import { BRAND } from '@/lib/config/brand';
+import { Suspense } from 'react';
+import { Layout } from '@/components/Layout';
+import ClinicianCarePlanClient from './ClinicianCarePlanClient';
+
+export const dynamic = 'force-dynamic';
 
 export default function ClinicianCarePlanPage(): React.ReactNode {
   return (
-    <main className="min-h-screen bg-background">
-      <div className={`${BRAND.spacing.pageMaxWidth} mx-auto px-4 ${BRAND.spacing.sectionPadding}`}>
-        <h1 className={`${BRAND.typography.headingSize} font-semibold text-text`}>Care Plan Review</h1>
-        <p className="mt-2 text-text-muted">Review and approve care plan versions as a clinician. Coming soon.</p>
-        <Link href="/" className="mt-6 inline-block text-primary hover:underline">← Back to Home</Link>
-      </div>
-    </main>
+    <Layout>
+      <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><p className="text-text-muted">Loading…</p></div>}>
+        <ClinicianCarePlanClient />
+      </Suspense>
+    </Layout>
   );
 }

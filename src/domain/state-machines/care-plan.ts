@@ -35,7 +35,8 @@ export type CarePlanStatus =
   | 'PAUSED'
   | 'REVISED'
   | 'COMPLETED'
-  | 'RETIRED';
+  | 'RETIRED'
+  | 'SUPERSEDED';
 
 export type CarePlanAction =
   | 'propose'
@@ -83,9 +84,10 @@ export const CARE_PLAN_TRANSITIONS: Record<CarePlanStatus, Partial<Record<CarePl
     retire: 'RETIRED',
   },
   RETIRED: {},
+  SUPERSEDED: {},
 };
 
-const TERMINAL_CARE_PLAN_STATUSES: ReadonlySet<CarePlanStatus> = new Set(['RETIRED']);
+const TERMINAL_CARE_PLAN_STATUSES: ReadonlySet<CarePlanStatus> = new Set(['RETIRED', 'SUPERSEDED']);
 
 /**
  * Validate a proposed care-plan state transition.

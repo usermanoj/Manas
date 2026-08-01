@@ -7,6 +7,8 @@ export {
   SEED_CONTENT_MODULE_VERSIONS,
   SEED_CARE_PLANS,
   SEED_CARE_PLAN_VERSIONS,
+  SEED_HANDOFFS,
+  SEED_CONSENT_RECORDS,
 } from './seed-data';
 export type {
   Profile,

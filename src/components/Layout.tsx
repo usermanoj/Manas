@@ -24,6 +24,15 @@ export function Layout({ children }: LayoutProps): React.ReactNode {
             <Link href="/care-plan" className="text-text-muted hover:text-primary transition-colors">
               Care Plan
             </Link>
+            <Link href="/handoff" className="text-text-muted hover:text-primary transition-colors">
+              Handoff
+            </Link>
+            <Link href="/professionals" className="text-text-muted hover:text-primary transition-colors">
+              Professionals
+            </Link>
+            <Link href="/privacy" className="text-text-muted hover:text-primary transition-colors">
+              Privacy
+            </Link>
           </nav>
         </div>
       </header>

@@ -111,6 +111,10 @@ export interface CarePlan {
   userId: string;
   clinicianId: string;
   status: string;
+  overallStatus: string;
+  activeVersionId: string | null;
+  latestVersionId: string;
+  createdAt?: Date;
 }
 
 export interface CarePlanVersion {
@@ -126,6 +130,7 @@ export interface CarePlanVersion {
   clinicianApprovedAt?: Date;
   userAcceptedAt?: Date;
   createdAt: Date;
+  previousVersionId?: string;
 }
 
 export interface AuditEvent {

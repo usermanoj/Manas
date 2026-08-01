@@ -6,6 +6,8 @@ import {
   ContentModuleVersion,
   CarePlan,
   CarePlanVersion,
+  Handoff,
+  ConsentRecord,
 } from './types';
 
 // ─── Profiles ──────────────────────────────────────────────────────────────────
@@ -170,6 +172,9 @@ export const SEED_CARE_PLANS: CarePlan[] = [
     userId: 'profile-ananya-sharma',
     clinicianId: 'provider-dr-maya-rao',
     status: 'ACTIVE',
+    overallStatus: 'ACTIVE',
+    activeVersionId: 'care-plan-ananya-001-v2',
+    latestVersionId: 'care-plan-ananya-001-v2',
   },
 ];
 
@@ -219,5 +224,14 @@ export const SEED_CARE_PLAN_VERSIONS: CarePlanVersion[] = [
     clinicianApprovedAt: new Date('2026-04-10T15:00:00.000Z'),
     userAcceptedAt: new Date('2026-04-11T10:00:00.000Z'),
     createdAt: new Date('2026-04-09T09:00:00.000Z'),
+    previousVersionId: 'care-plan-ananya-001-v1',
   },
 ];
+
+// ─── Handoffs ──────────────────────────────────────────────────────────────────
+
+export const SEED_HANDOFFS: Handoff[] = [];
+
+// ─── Consent Records ───────────────────────────────────────────────────────────
+
+export const SEED_CONSENT_RECORDS: ConsentRecord[] = [];

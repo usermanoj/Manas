@@ -54,6 +54,8 @@ export {
   SEED_CONTENT_MODULE_VERSIONS,
   SEED_CARE_PLANS,
   SEED_CARE_PLAN_VERSIONS,
+  SEED_HANDOFFS,
+  SEED_CONSENT_RECORDS,
 } from './repositories';
 export type {
   Profile,
@@ -72,7 +74,7 @@ export type {
 } from './repositories';
 
 // ─── Audit ─────────────────────────────────────────────────────────────────────
-export { InMemoryAuditLogger } from './audit';
+export { InMemoryAuditLogger, AuditEventType } from './audit';
 export type { AuditLogger } from './audit';
 
 // ─── Safety ────────────────────────────────────────────────────────────────────
@@ -95,3 +97,22 @@ export type {
   ConfirmResult,
   CheckInOrchestratorDeps,
 } from './check-in';
+
+// ─── Handoff ───────────────────────────────────────────────────────────────────
+export { HandoffOrchestrator, InMemoryUnitOfWork } from './handoff';
+export type { HandoffOrchestratorDeps } from './handoff';
+export {
+  ConsentAndSendRequestSchema,
+  CreateHandoffRequestSchema,
+} from './handoff';
+export type { ConsentAndSendRequest, CreateHandoffRequest } from './handoff';
+
+// ─── Care Plan ─────────────────────────────────────────────────────────────────
+export { CarePlanOrchestrator } from './care-plan';
+export type { CarePlanOrchestratorDeps } from './care-plan';
+export {
+  GoalSchema,
+  CreateCarePlanRequestSchema,
+  TransitionCarePlanRequestSchema,
+} from './care-plan';
+export type { CreateCarePlanRequest, TransitionCarePlanRequest } from './care-plan';
