@@ -318,8 +318,20 @@ export default function CheckInPage(): React.ReactNode {
           sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
         }
       } catch {
-        // Proceed to summary regardless — data is in sessionStorage.
+        // API call failed — still persist structuredAnswers so the summary page
+        // can use the server-side GET fallback to recover the session.
+        const stored = sessionStorage.getItem(STORAGE_KEY);
+        const base = stored ? JSON.parse(stored) as CheckInState : ({} as CheckInState);
+        const updated = { ...base, structuredAnswers: finalStructured };
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       }
+    } else {
+      // Fallback mode or no sessionId — persist structuredAnswers for offline
+      // recovery. The summary page will use the sessionId from URL params.
+      const stored = sessionStorage.getItem(STORAGE_KEY);
+      const base = stored ? JSON.parse(stored) as CheckInState : ({} as CheckInState);
+      const updated = { ...base, structuredAnswers: finalStructured };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     }
 
     const params = state.sessionId ? `?sessionId=${state.sessionId}` : '';

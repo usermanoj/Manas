@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Layout } from '@/components/Layout';
 import { BRAND } from '@/lib/config/brand';
 import type {
@@ -87,16 +87,31 @@ function Spinner(): React.ReactNode {
   );
 }
 
-function ErrorMessage({ message, onRetry }: { message: string; onRetry: () => void }): React.ReactNode {
+interface ErrorMessageProps {
+  message: string;
+  onRetry: () => void;
+  retrying?: boolean;
+}
+
+function ErrorMessage({ message, onRetry, retrying }: ErrorMessageProps): React.ReactNode {
   return (
     <div className="bg-error/10 border border-error/30 rounded-lg p-6 text-center">
       <p className="text-error font-medium mb-3">{message}</p>
-      <button
-        onClick={onRetry}
-        className="bg-primary text-white hover:bg-primary-light rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-      >
-        Retry
-      </button>
+      <div className="flex justify-center gap-3">
+        <button
+          onClick={onRetry}
+          disabled={retrying}
+          className="bg-primary text-white hover:bg-primary-light rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {retrying ? 'Retrying…' : 'Try Again'}
+        </button>
+        <Link
+          href="/check-in"
+          className="border border-primary text-primary hover:bg-primary hover:text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+        >
+          Start New Check-In
+        </Link>
+      </div>
     </div>
   );
 }
@@ -152,6 +167,7 @@ function FieldCard({ label, testId, children, note }: FieldCardProps): React.Rea
 // ---------------------------------------------------------------------------
 
 function SummaryPageContent(): React.ReactNode {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('sessionId');
 
@@ -170,6 +186,7 @@ function SummaryPageContent(): React.ReactNode {
   // Confirm data
   const [confirmResponse, setConfirmResponse] = useState<ConfirmCheckInResponse | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   // Developer info
   const [devInfo, setDevInfo] = useState<{ modelVersion: string; promptVersion: string; policyVersion: string }>({
@@ -180,7 +197,7 @@ function SummaryPageContent(): React.ReactNode {
   const [devInfoExpanded, setDevInfoExpanded] = useState(false);
 
   // Load draft summary — prefer cached sessionStorage data from check-in page,
-  // fall back to calling /complete if not available.
+  // fall back to the GET /api/check-ins/[id] endpoint, then /complete if needed.
   const loadDraft = useCallback(async () => {
     if (!sessionId) {
       setLoading(false);
@@ -189,20 +206,115 @@ function SummaryPageContent(): React.ReactNode {
     setLoading(true);
     setError(null);
     try {
+      // ── Path 1: sessionStorage cache (fast path) ──────────────────────────
       const stored = sessionStorage.getItem('manas-check-in');
-      if (!stored) {
+      if (stored) {
+        const checkInState = JSON.parse(stored) as {
+          structuredAnswers?: Record<string, unknown>;
+          completeResponse?: CompleteCheckInResponse;
+        };
+
+        // If the check-in page already stored the /complete response, use it.
+        if (checkInState.completeResponse) {
+          const data = checkInState.completeResponse;
+          setDraftSummary(data.draftSummary);
+          setFormData(data.draftSummary);
+          setProvisionalRouting(data.provisionalRouting);
+          setDevInfo((prev) => ({
+            ...prev,
+            modelVersion: data.modelVersion,
+            promptVersion: data.promptVersion,
+            policyVersion: data.policyVersion,
+          }));
+          setLoading(false);
+          return;
+        }
+
+        // sessionStorage has structuredAnswers but no completeResponse —
+        // call /complete to produce the draft summary + provisional routing.
+        const structuredAnswers = checkInState.structuredAnswers ?? checkInState;
+        const completeRes = await fetch(`/api/check-ins/${sessionId}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ structuredAnswers }),
+        });
+        if (completeRes.ok) {
+          const data: CompleteCheckInResponse = await completeRes.json();
+          setDraftSummary(data.draftSummary);
+          setFormData(data.draftSummary);
+          setProvisionalRouting(data.provisionalRouting);
+          setDevInfo((prev) => ({
+            ...prev,
+            modelVersion: data.modelVersion,
+            promptVersion: data.promptVersion,
+            policyVersion: data.policyVersion,
+          }));
+          setLoading(false);
+          return;
+        }
+      }
+
+      // ── Path 2: Server-side fallback via GET /api/check-ins/[id] ───────────
+      const sessionRes = await fetch(`/api/check-ins/${sessionId}`);
+      if (!sessionRes.ok) {
         setError('No check-in data found. Please start a check-in first.');
         setLoading(false);
         return;
       }
-      const checkInState = JSON.parse(stored) as {
-        structuredAnswers?: Record<string, unknown>;
-        completeResponse?: CompleteCheckInResponse;
+
+      const session = await sessionRes.json() as {
+        status: string;
+        modelVersion: string;
+        promptVersion: string;
+        structuredSummary: StructuredCheckIn | null;
       };
 
-      // If the check-in page already stored the /complete response, use it.
-      if (checkInState.completeResponse) {
-        const data = checkInState.completeResponse;
+      // If the session already has a confirmed structuredSummary, show it
+      // directly in the confirmed phase (the user already confirmed it).
+      if (session.structuredSummary && (session.status === 'SUMMARIZED' || session.status === 'COMPLETED')) {
+        const summary = session.structuredSummary;
+        setDraftSummary(summary);
+        setFormData(summary);
+        setDevInfo((prev) => ({
+          ...prev,
+          modelVersion: session.modelVersion,
+          promptVersion: session.promptVersion,
+          policyVersion: '',
+        }));
+
+        // If already confirmed (SUMMARIZED), try to reconstruct the confirm
+        // response by calling /confirm. If that fails (already confirmed),
+        // just show the draft phase — the user can still proceed.
+        if (session.status === 'SUMMARIZED') {
+          // Session was already confirmed — show the draft for re-review.
+          // The confirm endpoint would reject a terminal session, so stay in draft.
+          setProvisionalRouting(null);
+        }
+        // else: COMPLETED but not yet confirmed — show as editable draft.
+        setLoading(false);
+        return;
+      }
+
+      // ── Path 3: Session exists but not yet completed — call /complete ──────
+      // Use the structuredSummary if available, otherwise use minimal defaults.
+      const answersForComplete: StructuredCheckIn = session.structuredSummary ?? {
+        primary_concern: 'Not recorded',
+        concern_duration: 'days',
+        sleep_impact: 'none',
+        daily_functioning_impact: 'none',
+        support_preference: 'general_reflection',
+        feels_safe: 'prefer_not_to_answer',
+        key_points: [],
+      };
+
+      const completeRes2 = await fetch(`/api/check-ins/${sessionId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ structuredAnswers: answersForComplete }),
+      });
+
+      if (completeRes2.ok) {
+        const data: CompleteCheckInResponse = await completeRes2.json();
         setDraftSummary(data.draftSummary);
         setFormData(data.draftSummary);
         setProvisionalRouting(data.provisionalRouting);
@@ -212,28 +324,9 @@ function SummaryPageContent(): React.ReactNode {
           promptVersion: data.promptVersion,
           policyVersion: data.policyVersion,
         }));
-        setLoading(false);
-        return;
+      } else {
+        setError('No check-in data found. Please start a check-in first.');
       }
-
-      // Fallback: call /complete if cached data is missing.
-      const structuredAnswers = checkInState.structuredAnswers ?? checkInState;
-      const res = await fetch(`/api/check-ins/${sessionId}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ structuredAnswers }),
-      });
-      if (!res.ok) throw new Error('Failed to load draft summary.');
-      const data: CompleteCheckInResponse = await res.json();
-      setDraftSummary(data.draftSummary);
-      setFormData(data.draftSummary);
-      setProvisionalRouting(data.provisionalRouting);
-      setDevInfo((prev) => ({
-        ...prev,
-        modelVersion: data.modelVersion,
-        promptVersion: data.promptVersion,
-        policyVersion: data.policyVersion,
-      }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'An unexpected error occurred.');
     } finally {
@@ -245,6 +338,20 @@ function SummaryPageContent(): React.ReactNode {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data loading on mount requires setState in effect
     loadDraft();
   }, [loadDraft]);
+
+  // Retry handler: redirect to check-in if no data is recoverable.
+  const handleRetry = useCallback(async () => {
+    if (!sessionId) {
+      router.push('/check-in');
+      return;
+    }
+    setRetrying(true);
+    try {
+      await loadDraft();
+    } finally {
+      setRetrying(false);
+    }
+  }, [sessionId, router, loadDraft]);
 
   // Confirm handler
   const handleConfirm = async (): Promise<void> => {
@@ -317,8 +424,11 @@ function SummaryPageContent(): React.ReactNode {
       <Layout>
         <div className={`${BRAND.spacing.pageMaxWidth} mx-auto px-4 ${BRAND.spacing.sectionPadding}`}>
           <div className="text-center py-12">
-            <p className="text-text-muted text-lg mb-4">No check-in data found. Please start a check-in first.</p>
-            <Link href="/check-in" className="text-primary hover:underline font-medium">
+            <p className="text-text-muted text-lg mb-4">Start a check-in to see your summary.</p>
+            <Link
+              href="/check-in"
+              className="inline-block bg-primary text-white hover:bg-primary-light rounded-lg px-6 py-3 text-lg font-medium transition-colors"
+            >
               Start a Check-In
             </Link>
           </div>
@@ -332,7 +442,7 @@ function SummaryPageContent(): React.ReactNode {
       <div className={`${BRAND.spacing.pageMaxWidth} mx-auto px-4 ${BRAND.spacing.sectionPadding}`}>
         {loading && <Spinner />}
 
-        {!loading && error && <ErrorMessage message={error} onRetry={loadDraft} />}
+        {!loading && error && <ErrorMessage message={error} onRetry={handleRetry} retrying={retrying} />}
 
         {!loading && !error && phase === 'draft' && formData && (
           <div data-testid="draft-summary">
@@ -538,7 +648,7 @@ function SummaryPageContent(): React.ReactNode {
             </div>
 
             {/* Navigation */}
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col sm:flex-row gap-4 mb-8">
               <Link
                 data-testid="continue-module"
                 href="/module/pause-reflect"
@@ -552,6 +662,30 @@ function SummaryPageContent(): React.ReactNode {
               >
                 Back to Home
               </Link>
+            </div>
+
+            {/* Browse Professionals CTA */}
+            <div className="bg-surface border border-primary/40 rounded-xl shadow-sm p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <svg className="w-6 h-6 text-primary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  <div>
+                    <h3 className="text-base font-semibold text-text">Connect with a Professional</h3>
+                    <p className="text-sm text-text-muted mt-1">
+                      Browse qualified professionals who can provide personalized support.
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  data-testid="browse-professionals"
+                  href="/professionals"
+                  className="shrink-0 border border-primary text-primary hover:bg-primary hover:text-white rounded-lg px-5 py-2.5 font-medium transition-colors text-center"
+                >
+                  Browse Professionals
+                </Link>
+              </div>
             </div>
           </div>
         )}

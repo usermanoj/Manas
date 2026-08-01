@@ -65,6 +65,65 @@ Production dependencies are checked using:
 npm audit --omit=dev
 ```
 
+## Day 4: Consent, Clinician Inbox & Care-Plan Twin
+
+### Consent source of truth
+The `consent_records` in-memory repository is the sole source of truth for
+consent. There is no external consent management system, no consent audit
+trail outside the audit logger, and no integration with real EHR or
+patient-consent platforms.
+
+### One-time, version-specific consent
+Each consent record is scoped to a specific combination of `handoffId`,
+`handoffVersion`, `providerId`, `consentVersion`, and `previewHash`. It is
+a one-time authorization bound to an exact handoff snapshot. It is not a
+reusable or revocable authorization that applies across handoff versions.
+
+### Post-transmission revocation
+Post-transmission consent revocation and recipient-data deletion remain
+future work. Once a handoff is SENT, the prototype does not support
+recalling it or deleting the recipient copy.
+
+### Atomic consent-and-send
+The consent-and-send operation uses a UnitOfWork pattern that stages
+changes in memory and commits them atomically within a single process.
+This is not true ACID across repositories; it is an in-memory staged
+commit suitable for demonstration only.
+
+### Fictional clinician authentication
+All clinician pages use `DEMO_MODE` server-derived identity. The clinician
+profile (`profile-dr-maya-rao`) is hard-coded on the server. There is no
+real authentication, authorisation, or multi-tenant isolation.
+
+### Care-plan version rules
+V1 is SUPERSEDED when V2 is activated by user acceptance. V1 becomes
+immutable after supersession. The prototype enforces this through
+in-memory state-machine transitions, not through database-level
+constraints.
+
+### Memory-mode demo limitations
+All repositories are in-memory singletons. Data is lost on server
+restart. There is no persistence, backup, or recovery mechanism.
+
+### No real care relationship
+All interactions occur within a fictional demonstration workspace.
+No real clinician-client relationship is created. No real appointments,
+referrals, or clinical records are generated.
+
+### Synthetic-data disclaimer
+All clinician pages display a synthetic-data disclaimer banner.
+All professional profiles are fictional demonstration profiles.
+
+### Audit events contain metadata only
+The audit timeline on the privacy page strips sensitive detail fields
+(raw conversation, reflection text, full summaries) and shows only
+metadata. This is enforced by the `/api/audit/me` route.
+
+### Server-derived identity
+All role assignments (user, clinician) are derived from the demo session
+on the server. There is no production authentication, session management,
+or role-based access control.
+
 ## Day 2 implementation status
 
 The check-in vertical slice is functional:

@@ -1,8 +1,30 @@
 import { MockModelGateway, FallbackModelGateway } from '@/domain/ai';
 import type { ModelGateway } from '@/domain/ai';
 import { InMemoryRepository } from '@/domain/repositories';
-import type { CheckInSession, SafetyAssessment } from '@/domain/repositories';
+import type {
+  CheckInSession,
+  SafetyAssessment,
+  Handoff,
+  ConsentRecord,
+  CarePlan,
+  CarePlanVersion,
+  Provider,
+  Profile,
+} from '@/domain/repositories';
+import {
+  SEED_PROFILES,
+  SEED_PROVIDERS,
+  SEED_HANDOFFS,
+  SEED_CONSENT_RECORDS,
+  SEED_CARE_PLANS,
+  SEED_CARE_PLAN_VERSIONS,
+} from '@/domain/repositories';
 import { InMemoryAuditLogger } from '@/domain/audit';
+import { HandoffOrchestrator } from '@/domain/handoff';
+import type { HandoffOrchestratorDeps } from '@/domain/handoff';
+import { InMemoryUnitOfWork } from '@/domain/handoff';
+import { CarePlanOrchestrator } from '@/domain/care-plan';
+import type { CarePlanOrchestratorDeps } from '@/domain/care-plan';
 import { env } from '@/lib/config/env';
 
 /**
@@ -17,6 +39,13 @@ export interface Services {
   sessionRepo: InMemoryRepository<CheckInSession>;
   safetyAssessmentRepo: InMemoryRepository<SafetyAssessment>;
   auditLogger: InMemoryAuditLogger;
+  handoffRepo: InMemoryRepository<Handoff>;
+  consentRecordRepo: InMemoryRepository<ConsentRecord>;
+  carePlanRepo: InMemoryRepository<CarePlan>;
+  carePlanVersionRepo: InMemoryRepository<CarePlanVersion>;
+  providerRepo: InMemoryRepository<Provider>;
+  profileRepo: InMemoryRepository<Profile>;
+  unitOfWorkFactory: () => InMemoryUnitOfWork;
 }
 
 /**
@@ -42,6 +71,20 @@ function createModelGateway(): ModelGateway {
 const sessionRepo = new InMemoryRepository<CheckInSession>();
 const safetyAssessmentRepo = new InMemoryRepository<SafetyAssessment>();
 const auditLogger = new InMemoryAuditLogger();
+const handoffRepo = new InMemoryRepository<Handoff>();
+const consentRecordRepo = new InMemoryRepository<ConsentRecord>();
+const carePlanRepo = new InMemoryRepository<CarePlan>();
+const carePlanVersionRepo = new InMemoryRepository<CarePlanVersion>();
+const providerRepo = new InMemoryRepository<Provider>();
+const profileRepo = new InMemoryRepository<Profile>();
+
+// Seed demo data into singleton repositories (synchronous via .seed())
+profileRepo.seed(SEED_PROFILES);
+providerRepo.seed(SEED_PROVIDERS);
+handoffRepo.seed(SEED_HANDOFFS);
+consentRecordRepo.seed(SEED_CONSENT_RECORDS);
+carePlanRepo.seed(SEED_CARE_PLANS);
+carePlanVersionRepo.seed(SEED_CARE_PLAN_VERSIONS);
 
 /**
  * Create services for the current request.
@@ -57,5 +100,39 @@ export function createServices(): Services {
     sessionRepo,
     safetyAssessmentRepo,
     auditLogger,
+    handoffRepo,
+    consentRecordRepo,
+    carePlanRepo,
+    carePlanVersionRepo,
+    providerRepo,
+    profileRepo,
+    unitOfWorkFactory: () => new InMemoryUnitOfWork(),
   };
+}
+
+/**
+ * Create a HandoffOrchestrator wired to the given services.
+ */
+export function createHandoffOrchestrator(services: Services): HandoffOrchestrator {
+  const deps: HandoffOrchestratorDeps = {
+    handoffRepo: services.handoffRepo,
+    consentRecordRepo: services.consentRecordRepo,
+    auditLogger: services.auditLogger,
+    unitOfWorkFactory: services.unitOfWorkFactory,
+    providerRepo: services.providerRepo,
+  };
+  return new HandoffOrchestrator(deps);
+}
+
+/**
+ * Create a CarePlanOrchestrator wired to the given services.
+ */
+export function createCarePlanOrchestrator(services: Services): CarePlanOrchestrator {
+  const deps: CarePlanOrchestratorDeps = {
+    carePlanRepo: services.carePlanRepo,
+    carePlanVersionRepo: services.carePlanVersionRepo,
+    handoffRepo: services.handoffRepo,
+    auditLogger: services.auditLogger,
+  };
+  return new CarePlanOrchestrator(deps);
 }
