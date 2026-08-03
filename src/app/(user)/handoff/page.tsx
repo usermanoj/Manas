@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Layout } from '@/components/Layout';
 import { BRAND } from '@/lib/config/brand';
+import { ContactGate } from '@/components/providers/ContactGate';
 
 const DEFAULT_PROVIDER_ID = 'provider-dr-maya-rao';
 
@@ -69,7 +71,10 @@ async function computePreviewHash(summary: StructuredSummary, excluded: string[]
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export default function HandoffPage(): React.ReactNode {
+function HandoffPageContent(): React.ReactNode {
+  const searchParams = useSearchParams();
+  const providerId = searchParams.get('providerId') ?? DEFAULT_PROVIDER_ID;
+
   const [handoff, setHandoff] = useState<HandoffState | null>(null);
   const [provider, setProvider] = useState<ProviderData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,7 +100,7 @@ export default function HandoffPage(): React.ReactNode {
         if (provRes.ok) {
           const provData = await provRes.json();
           const found = (provData.providers ?? []).find(
-            (p: ProviderData) => p.id === DEFAULT_PROVIDER_ID,
+            (p: ProviderData) => p.id === providerId,
           );
           if (found && !cancelled) setProvider(found);
         }
@@ -106,7 +111,7 @@ export default function HandoffPage(): React.ReactNode {
           const listData = await listRes.json();
           const existing = (listData.handoffs ?? []).find(
             (h: HandoffState & { providerId: string }) =>
-              h.providerId === DEFAULT_PROVIDER_ID,
+              h.providerId === providerId,
           );
           if (existing) {
             if (!cancelled) {
@@ -131,7 +136,7 @@ export default function HandoffPage(): React.ReactNode {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            providerId: DEFAULT_PROVIDER_ID,
+            providerId,
             structuredSummary: DEMO_SUMMARY,
             excludedEntries: DEMO_EXCLUDED,
           }),
@@ -148,7 +153,7 @@ export default function HandoffPage(): React.ReactNode {
             version: created.version,
             structuredSummary: DEMO_SUMMARY,
             excludedEntries: DEMO_EXCLUDED,
-            providerId: DEFAULT_PROVIDER_ID,
+            providerId,
             sentAt: null,
           });
         }
@@ -159,7 +164,7 @@ export default function HandoffPage(): React.ReactNode {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [providerId]);
 
   const handleSend = async (): Promise<void> => {
     if (!handoff || !consentGiven) return;
@@ -209,6 +214,10 @@ export default function HandoffPage(): React.ReactNode {
   return (
     <Layout>
       <div className={`${BRAND.spacing.pageMaxWidth} mx-auto px-4 ${BRAND.spacing.sectionPadding}`}>
+        <ContactGate
+          title="Save your contact details before sending a handoff"
+          description="Please sign in or create a free account so the professional can respond to your request in this demonstration workspace."
+        >
         <div className="flex items-center justify-between mb-6">
           <h1 className={`${BRAND.typography.headingSize} font-semibold text-text`}>
             Handoff to a Professional
@@ -391,7 +400,22 @@ export default function HandoffPage(): React.ReactNode {
             )}
           </div>
         )}
+        </ContactGate>
       </div>
     </Layout>
+  );
+}
+
+export default function HandoffPage(): React.ReactNode {
+  return (
+    <Suspense fallback={
+      <Layout>
+        <div className="flex justify-center items-center py-12">
+          <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+        </div>
+      </Layout>
+    }>
+      <HandoffPageContent />
+    </Suspense>
   );
 }

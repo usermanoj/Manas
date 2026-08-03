@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Layout } from '@/components/Layout';
 import { BRAND } from '@/lib/config/brand';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { SymptomRecorder, type SymptomFormData } from '@/components/symptoms/SymptomRecorder';
+import { SymptomBuckets } from '@/components/symptoms/SymptomBuckets';
 import type {
   StructuredCheckIn,
   CompleteCheckInResponse,
@@ -74,6 +77,16 @@ const PROVISIONAL_ROUTING_DISPLAY: Record<RoutingState, string> = {
   URGENT_SUPPORT_INFORMATION: 'Support information',
   HUMAN_REVIEW_REQUIRED: 'Additional review may be needed',
 };
+
+interface SymptomEntry {
+  id: string;
+  text: string;
+  category: string;
+  severity: string;
+  frequency: string;
+  impact: string;
+  createdAt: string;
+}
 
 // ---------------------------------------------------------------------------
 // Helper components
@@ -170,6 +183,7 @@ function SummaryPageContent(): React.ReactNode {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('sessionId');
+  const { user } = useAuth();
 
   // Phase state
   const [loading, setLoading] = useState(true);
@@ -180,6 +194,11 @@ function SummaryPageContent(): React.ReactNode {
   const [draftSummary, setDraftSummary] = useState<StructuredCheckIn | null>(null);
   const [provisionalRouting, setProvisionalRouting] = useState<CompleteCheckInResponse['provisionalRouting'] | null>(null);
 
+  // AI narrative
+  const [aiNarrative, setAiNarrative] = useState<string>('');
+  const [suggestedKeyPoints, setSuggestedKeyPoints] = useState<string[]>([]);
+  const [regenerating, setRegenerating] = useState(false);
+
   // Editable form state
   const [formData, setFormData] = useState<StructuredCheckIn | null>(null);
 
@@ -187,6 +206,13 @@ function SummaryPageContent(): React.ReactNode {
   const [confirmResponse, setConfirmResponse] = useState<ConfirmCheckInResponse | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [retrying, setRetrying] = useState(false);
+
+  // Symptoms
+  const [symptoms, setSymptoms] = useState<SymptomEntry[]>([]);
+  const [symptomsLoading, setSymptomsLoading] = useState(false);
+  const [symptomSaving, setSymptomSaving] = useState(false);
+  const [symptomDeletingId, setSymptomDeletingId] = useState<string | null>(null);
+  const [showSymptomRecorder, setShowSymptomRecorder] = useState(false);
 
   // Developer info
   const [devInfo, setDevInfo] = useState<{ modelVersion: string; promptVersion: string; policyVersion: string }>({
@@ -196,62 +222,124 @@ function SummaryPageContent(): React.ReactNode {
   });
   const [devInfoExpanded, setDevInfoExpanded] = useState(false);
 
+  // Proactive companion context (citations, cross-session insight, techniques)
+  interface CompanionContext {
+    primaryArchetype: string;
+    techniques: { id: string; name: string }[];
+    citations: Array<{ source: string; title?: string; url?: string; year?: string; description?: string }>;
+    crossSessionInsight: string | null;
+  }
+  const [companionContext, setCompanionContext] = useState<CompanionContext | null>(null);
+
+  // Load symptoms for logged-in users
+  const loadSymptoms = useCallback(async () => {
+    if (!user) return;
+    setSymptomsLoading(true);
+    try {
+      const res = await fetch('/api/symptoms');
+      if (res.ok) {
+        const data = await res.json();
+        setSymptoms((data.symptoms ?? []).map((s: SymptomEntry) => ({
+          ...s,
+          createdAt: typeof s.createdAt === 'string' ? s.createdAt : new Date(s.createdAt).toISOString(),
+        })));
+      }
+    } catch {
+      // Silent fail — symptoms are supplementary.
+    } finally {
+      setSymptomsLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- symptom list is loaded from external API on mount
+    void loadSymptoms();
+  }, [loadSymptoms]);
+
+  const applyCompleteResponse = useCallback((data: CompleteCheckInResponse) => {
+    setDraftSummary(data.draftSummary);
+    setFormData((prev) => {
+      if (prev) return prev;
+      // Pre-fill key points from AI suggestions if the draft has none.
+      if (!data.draftSummary.key_points || data.draftSummary.key_points.length === 0) {
+        return { ...data.draftSummary, key_points: data.suggestedKeyPoints.slice(0, 10) };
+      }
+      return data.draftSummary;
+    });
+    setProvisionalRouting(data.provisionalRouting);
+    setAiNarrative(data.aiNarrative);
+    setSuggestedKeyPoints(data.suggestedKeyPoints);
+    setDevInfo((prev) => ({
+      ...prev,
+      modelVersion: data.modelVersion,
+      promptVersion: data.promptVersion,
+      policyVersion: data.policyVersion,
+    }));
+  }, []);
+
   // Load draft summary — prefer cached sessionStorage data from check-in page,
   // fall back to the GET /api/check-ins/[id] endpoint, then /complete if needed.
   const loadDraft = useCallback(async () => {
-    if (!sessionId) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
       // ── Path 1: sessionStorage cache (fast path) ──────────────────────────
+      // Works for both online and offline completions; no server required.
       const stored = sessionStorage.getItem('manas-check-in');
       if (stored) {
         const checkInState = JSON.parse(stored) as {
+          sessionId?: string;
           structuredAnswers?: Record<string, unknown>;
           completeResponse?: CompleteCheckInResponse;
+          companionContext?: CompanionContext;
         };
+
+        if (checkInState.companionContext) {
+          setCompanionContext(checkInState.companionContext);
+        }
 
         // If the check-in page already stored the /complete response, use it.
         if (checkInState.completeResponse) {
-          const data = checkInState.completeResponse;
-          setDraftSummary(data.draftSummary);
-          setFormData(data.draftSummary);
-          setProvisionalRouting(data.provisionalRouting);
-          setDevInfo((prev) => ({
-            ...prev,
-            modelVersion: data.modelVersion,
-            promptVersion: data.promptVersion,
-            policyVersion: data.policyVersion,
-          }));
+          applyCompleteResponse(checkInState.completeResponse);
           setLoading(false);
           return;
         }
 
-        // sessionStorage has structuredAnswers but no completeResponse —
-        // call /complete to produce the draft summary + provisional routing.
+        // sessionStorage has structuredAnswers but no completeResponse.
+        // If we have a server session id, call /complete to produce the draft
+        // summary + provisional routing. Otherwise stay offline and derive a
+        // minimal provisional routing from the stored answers.
         const structuredAnswers = checkInState.structuredAnswers ?? checkInState;
-        const completeRes = await fetch(`/api/check-ins/${sessionId}/complete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ structuredAnswers }),
-        });
-        if (completeRes.ok) {
-          const data: CompleteCheckInResponse = await completeRes.json();
-          setDraftSummary(data.draftSummary);
-          setFormData(data.draftSummary);
-          setProvisionalRouting(data.provisionalRouting);
-          setDevInfo((prev) => ({
-            ...prev,
-            modelVersion: data.modelVersion,
-            promptVersion: data.promptVersion,
-            policyVersion: data.policyVersion,
-          }));
-          setLoading(false);
-          return;
+        const storedSessionId = checkInState.sessionId ?? sessionId;
+        if (storedSessionId && !storedSessionId.startsWith('offline-')) {
+          const completeRes = await fetch(`/api/check-ins/${storedSessionId}/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ structuredAnswers }),
+          });
+          if (completeRes.ok) {
+            const data: CompleteCheckInResponse = await completeRes.json();
+            applyCompleteResponse(data);
+            setLoading(false);
+            return;
+          }
         }
+
+        // Offline mode: render the stored answers directly.
+        const offlineSummary = structuredAnswers as StructuredCheckIn;
+        setDraftSummary(offlineSummary);
+        setFormData(offlineSummary);
+        setProvisionalRouting(null);
+        setAiNarrative(generateOfflineNarrative(offlineSummary));
+        setSuggestedKeyPoints(generateOfflineKeyPoints(offlineSummary));
+        setDevInfo((prev) => ({ ...prev, modelVersion: 'offline', promptVersion: 'offline', policyVersion: 'offline' }));
+        setLoading(false);
+        return;
+      }
+
+      if (!sessionId) {
+        setLoading(false);
+        return;
       }
 
       // ── Path 2: Server-side fallback via GET /api/check-ins/[id] ───────────
@@ -275,6 +363,8 @@ function SummaryPageContent(): React.ReactNode {
         const summary = session.structuredSummary;
         setDraftSummary(summary);
         setFormData(summary);
+        setAiNarrative(generateOfflineNarrative(summary));
+        setSuggestedKeyPoints(generateOfflineKeyPoints(summary));
         setDevInfo((prev) => ({
           ...prev,
           modelVersion: session.modelVersion,
@@ -315,15 +405,7 @@ function SummaryPageContent(): React.ReactNode {
 
       if (completeRes2.ok) {
         const data: CompleteCheckInResponse = await completeRes2.json();
-        setDraftSummary(data.draftSummary);
-        setFormData(data.draftSummary);
-        setProvisionalRouting(data.provisionalRouting);
-        setDevInfo((prev) => ({
-          ...prev,
-          modelVersion: data.modelVersion,
-          promptVersion: data.promptVersion,
-          policyVersion: data.policyVersion,
-        }));
+        applyCompleteResponse(data);
       } else {
         setError('No check-in data found. Please start a check-in first.');
       }
@@ -332,7 +414,7 @@ function SummaryPageContent(): React.ReactNode {
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, applyCompleteResponse]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data loading on mount requires setState in effect
@@ -389,6 +471,89 @@ function SummaryPageContent(): React.ReactNode {
     }
   };
 
+  // Regenerate AI narrative
+  const handleRegenerate = async (): Promise<void> => {
+    if (!sessionId || !formData) return;
+    setRegenerating(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/check-ins/${sessionId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ structuredAnswers: formData }),
+      });
+      if (!res.ok) throw new Error('Failed to regenerate summary.');
+      const data: CompleteCheckInResponse = await res.json();
+      setAiNarrative(data.aiNarrative);
+      setSuggestedKeyPoints(data.suggestedKeyPoints);
+      setProvisionalRouting(data.provisionalRouting);
+      setDevInfo((prev) => ({
+        ...prev,
+        modelVersion: data.modelVersion,
+        promptVersion: data.promptVersion,
+        policyVersion: data.policyVersion,
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to regenerate summary.');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const handleSoundsRight = (): void => {
+    if (!formData) return;
+    const newKeyPoints = suggestedKeyPoints.length > 0
+      ? suggestedKeyPoints.slice(0, 10)
+      : formData.key_points;
+    setFormData({ ...formData, key_points: newKeyPoints });
+  };
+
+  // Symptom handlers
+  const handleRecordSymptom = async (data: SymptomFormData): Promise<void> => {
+    if (!user) return;
+    setSymptomSaving(true);
+    try {
+      const res = await fetch('/api/symptoms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...data,
+          sessionId: sessionId ?? undefined,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to save symptom.');
+      const result = await res.json();
+      setSymptoms((prev) => [
+        ...prev,
+        {
+          ...result.symptom,
+          createdAt: typeof result.symptom.createdAt === 'string'
+            ? result.symptom.createdAt
+            : new Date(result.symptom.createdAt).toISOString(),
+        },
+      ]);
+      setShowSymptomRecorder(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save symptom.');
+    } finally {
+      setSymptomSaving(false);
+    }
+  };
+
+  const handleDeleteSymptom = async (id: string): Promise<void> => {
+    if (!user) return;
+    setSymptomDeletingId(id);
+    try {
+      const res = await fetch(`/api/symptoms/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete symptom.');
+      setSymptoms((prev) => prev.filter((s) => s.id !== id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete symptom.');
+    } finally {
+      setSymptomDeletingId(null);
+    }
+  };
+
   // Form update helpers
   const updateField = <K extends keyof StructuredCheckIn>(key: K, value: StructuredCheckIn[K]): void => {
     setFormData((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -418,8 +583,8 @@ function SummaryPageContent(): React.ReactNode {
     });
   };
 
-  // --- No session ID ---
-  if (!sessionId && !loading) {
+  // --- No session ID and no cached data ---
+  if (!sessionId && !loading && !formData && !error) {
     return (
       <Layout>
         <div className={`${BRAND.spacing.pageMaxWidth} mx-auto px-4 ${BRAND.spacing.sectionPadding}`}>
@@ -437,6 +602,8 @@ function SummaryPageContent(): React.ReactNode {
     );
   }
 
+  const isOfflineSession = !sessionId || sessionId.startsWith('offline-');
+
   return (
     <Layout>
       <div className={`${BRAND.spacing.pageMaxWidth} mx-auto px-4 ${BRAND.spacing.sectionPadding}`}>
@@ -450,6 +617,94 @@ function SummaryPageContent(): React.ReactNode {
               Review Your Summary
             </h1>
             <p className="text-text-muted mb-8">Review and edit your answers before confirming.</p>
+
+            {/* AI Narrative */}
+            <div className="bg-primary/5 border border-primary/20 rounded-xl p-6 mb-6">
+              <div className="flex items-start gap-3 mb-3">
+                <svg className="w-5 h-5 text-primary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <h2 className="text-base font-semibold text-text">Manus reflected summary</h2>
+              </div>
+              <p className="text-text leading-relaxed mb-4">{aiNarrative || generateOfflineNarrative(formData)}</p>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => void handleRegenerate()}
+                  disabled={regenerating || isOfflineSession}
+                  className="text-sm px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {regenerating ? 'Regenerating…' : 'Regenerate summary'}
+                </button>
+                <button
+                  onClick={handleSoundsRight}
+                  className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-light transition-colors"
+                >
+                  Sounds right
+                </button>
+              </div>
+              {isOfflineSession && (
+                <p className="text-xs text-text-muted mt-3">
+                  Offline mode: AI regeneration requires a connection.
+                </p>
+              )}
+            </div>
+
+            {/* Cross-session insight */}
+            {companionContext?.crossSessionInsight && (
+              <div data-testid="cross-session-insight" className="bg-secondary/10 border border-secondary/30 rounded-xl p-6 mb-6">
+                <div className="flex items-start gap-3 mb-2">
+                  <svg className="w-5 h-5 text-secondary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h2 className="text-base font-semibold text-text">Pattern across sessions</h2>
+                </div>
+                <p className="text-text leading-relaxed">{companionContext.crossSessionInsight}</p>
+              </div>
+            )}
+
+            {/* Sources / citations */}
+            {companionContext && companionContext.citations.length > 0 && (
+              <div data-testid="sources-panel" className="bg-surface border border-text/10 rounded-xl p-6 mb-6">
+                <div className="flex items-start gap-3 mb-3">
+                  <svg className="w-5 h-5 text-primary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <h2 className="text-base font-semibold text-text">Sources and techniques</h2>
+                </div>
+                {companionContext.techniques.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-sm text-text-muted mb-2">Techniques mentioned:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {companionContext.techniques.map((t) => (
+                        <span key={t.id} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                          {t.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <ul className="space-y-3">
+                  {companionContext.citations.map((citation, idx) => (
+                    <li key={idx} className="text-sm">
+                      <p className="font-medium text-text">{citation.title ?? citation.source}</p>
+                      {citation.description && <p className="text-text-muted">{citation.description}</p>}
+                      {citation.url ? (
+                        <a
+                          href={citation.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline text-xs"
+                        >
+                          {citation.source}{citation.year ? ` (${citation.year})` : ''}
+                        </a>
+                      ) : (
+                        <p className="text-text-muted text-xs">{citation.source}{citation.year ? ` (${citation.year})` : ''}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="space-y-6">
               {/* Primary concern */}
@@ -543,6 +798,51 @@ function SummaryPageContent(): React.ReactNode {
                 </div>
               </FieldCard>
 
+              {/* Symptom buckets */}
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-text">What you are experiencing</h2>
+                  {user && (
+                    <button
+                      onClick={() => setShowSymptomRecorder((v) => !v)}
+                      className="text-sm px-4 py-2 bg-secondary/10 text-text rounded-lg hover:bg-secondary/20 transition-colors"
+                    >
+                      {showSymptomRecorder ? 'Close recorder' : 'Record symptom'}
+                    </button>
+                  )}
+                </div>
+                {!user && (
+                  <div className="bg-surface border border-text/10 rounded-xl p-4 text-center mb-4">
+                    <p className="text-sm text-text-muted mb-2">
+                      Sign in to record and organize what you are experiencing.
+                    </p>
+                    <Link href="/login" className="text-sm text-primary hover:underline font-medium">
+                      Sign in or create an account
+                    </Link>
+                  </div>
+                )}
+                {user && showSymptomRecorder && (
+                  <div className="mb-4">
+                    <SymptomRecorder
+                      onSubmit={(data) => void handleRecordSymptom(data)}
+                      onCancel={() => setShowSymptomRecorder(false)}
+                      loading={symptomSaving}
+                    />
+                  </div>
+                )}
+                {user && symptomsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <SymptomBuckets
+                    symptoms={symptoms}
+                    onDelete={handleDeleteSymptom}
+                    deletingId={symptomDeletingId}
+                  />
+                )}
+              </section>
+
               {/* Provisional routing */}
               {provisionalRouting && (
                 <div data-testid="provisional-routing" className="bg-secondary/10 border border-secondary/30 rounded-lg p-4">
@@ -557,11 +857,16 @@ function SummaryPageContent(): React.ReactNode {
               )}
 
               {/* Confirm button */}
-              <div className="pt-4">
+              <div className="pt-4 space-y-3">
+                {isOfflineSession && (
+                  <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-text-muted">
+                    You are offline. You can review and edit your summary above, but confirming it requires a connection.
+                  </div>
+                )}
                 <button
                   data-testid="confirm-summary"
                   onClick={handleConfirm}
-                  disabled={confirming}
+                  disabled={confirming || isOfflineSession}
                   className="bg-primary text-white hover:bg-primary-light rounded-lg px-6 py-3 text-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full"
                 >
                   {confirming ? 'Confirming…' : 'Confirm Summary'}
@@ -582,6 +887,69 @@ function SummaryPageContent(): React.ReactNode {
               </h1>
             </div>
             <p className="text-text-muted mb-8">Your summary has been confirmed and saved.</p>
+
+            {/* AI Narrative (confirmed) */}
+            <div className="bg-primary/5 border border-primary/20 rounded-xl p-6 mb-6">
+              <h2 className="text-base font-semibold text-text mb-2">Manus reflected summary</h2>
+              <p className="text-text leading-relaxed">{aiNarrative || generateOfflineNarrative(formData)}</p>
+            </div>
+
+            {/* Cross-session insight (confirmed) */}
+            {companionContext?.crossSessionInsight && (
+              <div data-testid="cross-session-insight" className="bg-secondary/10 border border-secondary/30 rounded-xl p-6 mb-6">
+                <div className="flex items-start gap-3 mb-2">
+                  <svg className="w-5 h-5 text-secondary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h2 className="text-base font-semibold text-text">Pattern across sessions</h2>
+                </div>
+                <p className="text-text leading-relaxed">{companionContext.crossSessionInsight}</p>
+              </div>
+            )}
+
+            {/* Sources / citations (confirmed) */}
+            {companionContext && companionContext.citations.length > 0 && (
+              <div data-testid="sources-panel" className="bg-surface border border-text/10 rounded-xl p-6 mb-6">
+                <div className="flex items-start gap-3 mb-3">
+                  <svg className="w-5 h-5 text-primary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <h2 className="text-base font-semibold text-text">Sources and techniques</h2>
+                </div>
+                {companionContext.techniques.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-sm text-text-muted mb-2">Techniques mentioned:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {companionContext.techniques.map((t) => (
+                        <span key={t.id} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                          {t.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <ul className="space-y-3">
+                  {companionContext.citations.map((citation, idx) => (
+                    <li key={idx} className="text-sm">
+                      <p className="font-medium text-text">{citation.title ?? citation.source}</p>
+                      {citation.description && <p className="text-text-muted">{citation.description}</p>}
+                      {citation.url ? (
+                        <a
+                          href={citation.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline text-xs"
+                        >
+                          {citation.source}{citation.year ? ` (${citation.year})` : ''}
+                        </a>
+                      ) : (
+                        <p className="text-text-muted text-xs">{citation.source}{citation.year ? ` (${citation.year})` : ''}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="space-y-4 mb-8">
               {/* Read-only fields */}
@@ -611,6 +979,41 @@ function SummaryPageContent(): React.ReactNode {
                 </ul>
               </FieldCard>
             </div>
+
+            {/* Symptom buckets (confirmed) */}
+            <section className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-text">What you are experiencing</h2>
+                {user && (
+                  <button
+                    onClick={() => setShowSymptomRecorder((v) => !v)}
+                    className="text-sm px-4 py-2 bg-secondary/10 text-text rounded-lg hover:bg-secondary/20 transition-colors"
+                  >
+                    {showSymptomRecorder ? 'Close recorder' : 'Record symptom'}
+                  </button>
+                )}
+              </div>
+              {user && showSymptomRecorder && (
+                <div className="mb-4">
+                  <SymptomRecorder
+                    onSubmit={(data) => void handleRecordSymptom(data)}
+                    onCancel={() => setShowSymptomRecorder(false)}
+                    loading={symptomSaving}
+                  />
+                </div>
+              )}
+              {user && symptomsLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                </div>
+              ) : (
+                <SymptomBuckets
+                  symptoms={symptoms}
+                  onDelete={handleDeleteSymptom}
+                  deletingId={symptomDeletingId}
+                />
+              )}
+            </section>
 
             {/* Final routing */}
             <div data-testid="final-routing" className="bg-primary/10 border border-primary/30 rounded-lg p-4 mb-6">
@@ -692,6 +1095,26 @@ function SummaryPageContent(): React.ReactNode {
       </div>
     </Layout>
   );
+}
+
+function generateOfflineNarrative(summary: StructuredCheckIn): string {
+  const durationLabels: Record<string, string> = {
+    days: 'a few days',
+    weeks: 'a few weeks',
+    months: 'several months',
+    over_year: 'over a year',
+  };
+  const primaryConcern = summary.primary_concern?.trim() || 'something difficult';
+  const duration = durationLabels[summary.concern_duration] ?? 'a short time';
+  const support = summary.support_preference?.replace(/_/g, ' ') ?? 'general reflection';
+  return `You've shared that "${primaryConcern}" has been difficult for ${duration}. ` +
+    `You're looking for ${support}. ` +
+    "This is a reflection of what you told me — not a diagnosis or clinical assessment.";
+}
+
+function generateOfflineKeyPoints(summary: StructuredCheckIn): string[] {
+  if (summary.key_points && summary.key_points.length > 0) return summary.key_points;
+  return [summary.primary_concern ?? 'Primary concern'];
 }
 
 export default function SummaryPage(): React.ReactNode {

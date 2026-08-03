@@ -9,6 +9,9 @@ export {
   SEED_CARE_PLAN_VERSIONS,
   SEED_HANDOFFS,
   SEED_CONSENT_RECORDS,
+  SEED_USER_ACCOUNTS,
+  SEED_PROFESSIONAL_ACCOUNTS,
+  SEED_SYMPTOM_ENTRIES,
 } from './seed-data';
 export type {
   Profile,
@@ -24,4 +27,10 @@ export type {
   CarePlanVersion,
   AuditEvent,
   Repository,
+  UserAccount,
+  ProfessionalAccount,
+  SymptomEntry,
+  SymptomCategory,
+  SymptomSeverity,
+  SymptomFrequency,
 } from './types';

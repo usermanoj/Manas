@@ -90,7 +90,14 @@ export interface Provider {
   focusAreas: string[];
   availability: string;
   sessionType: string;
+  /** Display-only price range for the demo. No payments are processed. */
   priceRange: string;
+  /** Numeric price per session in USD for filtering and display. */
+  pricePerSession: number;
+  currency: string;
+  sessionDurationMinutes: number;
+  nextAvailable: string;
+  credentialsNote: string;
   bio: string;
   isFictionalDemo: boolean;
 }
@@ -144,6 +151,62 @@ export interface AuditEvent {
   policyVersion?: string;
   modelVersion?: string;
   promptVersion?: string;
+}
+
+// ─── Accounts / Auth ───────────────────────────────────────────────────────────
+
+export interface UserAccount {
+  id: string;
+  email: string;
+  passwordHash: string;
+  displayName: string;
+  dateOfBirth?: string;
+  /** Explicitly confirmed adult (18+) during registration. */
+  isAdultConfirmed: boolean;
+  consentToContact: boolean;
+  createdAt: Date;
+}
+
+export interface ProfessionalAccount {
+  id: string;
+  email: string;
+  passwordHash: string;
+  displayName: string;
+  providerId: string;
+  role: 'clinician';
+  createdAt: Date;
+}
+
+// ─── Symptom Tracking ──────────────────────────────────────────────────────────
+
+export type SymptomCategory =
+  | 'sleep'
+  | 'mood'
+  | 'energy'
+  | 'focus'
+  | 'physical_tension'
+  | 'social'
+  | 'work_stress'
+  | 'other';
+
+export type SymptomSeverity = 'mild' | 'moderate' | 'significant' | 'severe';
+export type SymptomFrequency =
+  | 'occasionally'
+  | 'weekly'
+  | 'several_times_a_week'
+  | 'daily'
+  | 'constant';
+
+export interface SymptomEntry {
+  id: string;
+  userId: string;
+  sessionId?: string;
+  text: string;
+  category: SymptomCategory;
+  severity: SymptomSeverity;
+  frequency: SymptomFrequency;
+  impact: string;
+  createdAt: Date;
 }
 
 /**

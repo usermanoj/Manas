@@ -12,16 +12,20 @@ import type {
   Profile,
   ContentModule,
   ContentModuleVersion,
+  UserAccount,
+  ProfessionalAccount,
+  SymptomEntry,
 } from '@/domain/repositories';
 import {
   SEED_PROFILES,
   SEED_PROVIDERS,
   SEED_HANDOFFS,
   SEED_CONSENT_RECORDS,
-  SEED_CARE_PLANS,
-  SEED_CARE_PLAN_VERSIONS,
   SEED_CONTENT_MODULES,
   SEED_CONTENT_MODULE_VERSIONS,
+  SEED_USER_ACCOUNTS,
+  SEED_PROFESSIONAL_ACCOUNTS,
+  SEED_SYMPTOM_ENTRIES,
 } from '@/domain/repositories';
 import { InMemoryAuditLogger } from '@/domain/audit';
 import { HandoffOrchestrator } from '@/domain/handoff';
@@ -31,6 +35,15 @@ import { CarePlanOrchestrator } from '@/domain/care-plan';
 import type { CarePlanOrchestratorDeps } from '@/domain/care-plan';
 import { ContentModuleOrchestrator } from '@/domain/content';
 import type { ContentModuleOrchestratorDeps } from '@/domain/content';
+import { AuthService } from '@/domain/auth';
+import type { AuthServiceDeps } from '@/domain/auth';
+import { SymptomService } from '@/domain/symptoms';
+import type { SymptomServiceDeps } from '@/domain/symptoms';
+import { ChatbotService } from '@/domain/chatbot';
+import type { ChatbotServiceDeps } from '@/domain/chatbot';
+import { ProactiveWellbeingEngine } from '@/domain/wellbeing';
+import { CheckInOrchestrator } from '@/domain/check-in';
+import type { CheckInOrchestratorDeps } from '@/domain/check-in';
 import { env } from '@/lib/config/env';
 
 /**
@@ -53,6 +66,9 @@ export interface Services {
   profileRepo: InMemoryRepository<Profile>;
   contentModuleRepo: InMemoryRepository<ContentModule>;
   contentModuleVersionRepo: InMemoryRepository<ContentModuleVersion>;
+  userAccountRepo: InMemoryRepository<UserAccount>;
+  professionalAccountRepo: InMemoryRepository<ProfessionalAccount>;
+  symptomEntryRepo: InMemoryRepository<SymptomEntry>;
   unitOfWorkFactory: () => InMemoryUnitOfWork;
 }
 
@@ -87,16 +103,20 @@ const providerRepo = new InMemoryRepository<Provider>();
 const profileRepo = new InMemoryRepository<Profile>();
 const contentModuleRepo = new InMemoryRepository<ContentModule>();
 const contentModuleVersionRepo = new InMemoryRepository<ContentModuleVersion>();
+const userAccountRepo = new InMemoryRepository<UserAccount>();
+const professionalAccountRepo = new InMemoryRepository<ProfessionalAccount>();
+const symptomEntryRepo = new InMemoryRepository<SymptomEntry>();
 
 // Seed demo data into singleton repositories (synchronous via .seed())
 profileRepo.seed(SEED_PROFILES);
 providerRepo.seed(SEED_PROVIDERS);
 handoffRepo.seed(SEED_HANDOFFS);
 consentRecordRepo.seed(SEED_CONSENT_RECORDS);
-carePlanRepo.seed(SEED_CARE_PLANS);
-carePlanVersionRepo.seed(SEED_CARE_PLAN_VERSIONS);
 contentModuleRepo.seed(SEED_CONTENT_MODULES);
 contentModuleVersionRepo.seed(SEED_CONTENT_MODULE_VERSIONS);
+userAccountRepo.seed(SEED_USER_ACCOUNTS as UserAccount[]);
+professionalAccountRepo.seed(SEED_PROFESSIONAL_ACCOUNTS as ProfessionalAccount[]);
+symptomEntryRepo.seed(SEED_SYMPTOM_ENTRIES);
 
 /**
  * Create services for the current request.
@@ -120,6 +140,9 @@ export function createServices(): Services {
     profileRepo,
     contentModuleRepo,
     contentModuleVersionRepo,
+    userAccountRepo,
+    professionalAccountRepo,
+    symptomEntryRepo,
     unitOfWorkFactory: () => new InMemoryUnitOfWork(),
   };
 }
@@ -161,4 +184,54 @@ export function createContentModuleOrchestrator(services: Services): ContentModu
     auditLogger: services.auditLogger,
   };
   return new ContentModuleOrchestrator(deps);
+}
+
+/**
+ * Create an AuthService wired to the given services.
+ */
+export function createAuthService(services: Services): AuthService {
+  const deps: AuthServiceDeps = {
+    userAccountRepo: services.userAccountRepo,
+    professionalAccountRepo: services.professionalAccountRepo,
+    auditLogger: services.auditLogger,
+  };
+  return new AuthService(deps);
+}
+
+/**
+ * Create a SymptomService wired to the given services.
+ */
+export function createSymptomService(services: Services): SymptomService {
+  const deps: SymptomServiceDeps = {
+    symptomEntryRepo: services.symptomEntryRepo,
+    auditLogger: services.auditLogger,
+  };
+  return new SymptomService(deps);
+}
+
+/**
+ * Create a ChatbotService wired to the given services.
+ */
+export function createChatbotService(services: Services): ChatbotService {
+  const deps: ChatbotServiceDeps = {
+    modelGateway: services.modelGateway,
+    auditLogger: services.auditLogger,
+  };
+  return new ChatbotService(deps);
+}
+
+/**
+ * Create a CheckInOrchestrator wired to the given services.
+ */
+export function createCheckInOrchestrator(services: Services): CheckInOrchestrator {
+  const deps: CheckInOrchestratorDeps = {
+    modelGateway: services.modelGateway,
+    fallbackGateway: services.fallbackGateway,
+    sessionRepo: services.sessionRepo,
+    safetyAssessmentRepo: services.safetyAssessmentRepo,
+    auditLogger: services.auditLogger,
+    proactiveEngine: new ProactiveWellbeingEngine(),
+    symptomEntryRepo: services.symptomEntryRepo,
+  };
+  return new CheckInOrchestrator(deps);
 }

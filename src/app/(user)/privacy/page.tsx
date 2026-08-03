@@ -42,6 +42,16 @@ interface SessionSummary {
   } | null;
 }
 
+interface SymptomEntry {
+  id: string;
+  text: string;
+  category: string;
+  severity: string;
+  frequency: string;
+  impact: string;
+  createdAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Display helpers
 // ---------------------------------------------------------------------------
@@ -69,6 +79,13 @@ const EVENT_LABELS: Record<string, string> = {
   CARE_PLAN_PAUSED: 'Care plan paused',
   CARE_PLAN_RETIRED: 'Care plan retired',
   SESSION_DELETED: 'Session deleted',
+  USER_REGISTERED: 'Account created',
+  USER_LOGGED_IN: 'You logged in',
+  PROFESSIONAL_LOGGED_IN: 'Clinician logged in',
+  LOGIN_FAILED: 'Login attempt failed',
+  SYMPTOM_RECORDED: 'Symptom recorded',
+  SYMPTOM_DELETED: 'Symptom deleted',
+  CHATBOT_MESSAGE_EXCHANGED: 'Chatbot conversation',
 };
 
 const DURATION_LABELS: Record<string, string> = {
@@ -104,6 +121,17 @@ const SAFETY_LABELS: Record<string, string> = {
   prefer_not_to_answer: 'Prefer not to answer',
 };
 
+const SYMPTOM_CATEGORY_LABELS: Record<string, string> = {
+  sleep: 'Sleep',
+  mood: 'Mood',
+  energy: 'Energy',
+  focus: 'Focus',
+  physical_tension: 'Physical tension',
+  social: 'Social',
+  work_stress: 'Work stress',
+  other: 'Other',
+};
+
 function dotColor(eventType: string): string {
   if (eventType.startsWith('CHECK_IN') || eventType.startsWith('SUMMARY')) return 'bg-blue-400';
   if (eventType.startsWith('SAFEGUARD') || eventType.startsWith('MODEL_FALLBACK')) return 'bg-red-400';
@@ -111,6 +139,9 @@ function dotColor(eventType: string): string {
   if (eventType.startsWith('HANDOFF')) return 'bg-purple-400';
   if (eventType.startsWith('CARE_PLAN')) return 'bg-green-400';
   if (eventType === 'SESSION_DELETED') return 'bg-orange-400';
+  if (eventType.startsWith('USER_') || eventType.startsWith('PROFESSIONAL_') || eventType === 'LOGIN_FAILED') return 'bg-indigo-400';
+  if (eventType.startsWith('SYMPTOM')) return 'bg-teal-400';
+  if (eventType.startsWith('CHATBOT')) return 'bg-pink-400';
   return 'bg-gray-400';
 }
 
@@ -142,6 +173,12 @@ export default function PrivacyPage(): React.ReactNode {
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+
+  // Symptoms state
+  const [symptoms, setSymptoms] = useState<SymptomEntry[]>([]);
+  const [symptomsLoading, setSymptomsLoading] = useState(true);
+  const [symptomsError, setSymptomsError] = useState<string | null>(null);
+  const [deletingSymptomId, setDeletingSymptomId] = useState<string | null>(null);
 
   // Fetch audit events
   useEffect(() => {
@@ -180,6 +217,38 @@ export default function PrivacyPage(): React.ReactNode {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSymptoms(): Promise<void> {
+      if (!cancelled) setSymptomsLoading(true);
+      if (!cancelled) setSymptomsError(null);
+      try {
+        const res = await fetch('/api/symptoms');
+        if (!res.ok) {
+          if (res.status === 401) {
+            // Anonymous users have no symptoms to show.
+            if (!cancelled) setSymptoms([]);
+            return;
+          }
+          throw new Error('Failed to fetch symptom entries');
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          setSymptoms((data.symptoms ?? []).map((s: SymptomEntry) => ({
+            ...s,
+            createdAt: typeof s.createdAt === 'string' ? s.createdAt : new Date(s.createdAt).toISOString(),
+          })));
+        }
+      } catch (err) {
+        if (!cancelled) setSymptomsError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        if (!cancelled) setSymptomsLoading(false);
+      }
+    }
+    loadSymptoms();
+    return () => { cancelled = true; };
+  }, []);
+
   // Delete handler
   const handleDelete = async (sessionId: string): Promise<void> => {
     if (!confirm('Are you sure you want to delete this check-in summary? This action cannot be undone.')) {
@@ -205,6 +274,32 @@ export default function PrivacyPage(): React.ReactNode {
       setSessionsError(err instanceof Error ? err.message : 'Failed to delete');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleDeleteSymptom = async (symptomId: string): Promise<void> => {
+    if (!confirm('Are you sure you want to delete this symptom entry? This action cannot be undone.')) {
+      return;
+    }
+    setDeletingSymptomId(symptomId);
+    try {
+      const res = await fetch(`/api/symptoms/${symptomId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? 'Failed to delete symptom');
+      }
+      setSymptoms((prev) => prev.filter((s) => s.id !== symptomId));
+      setDeleteSuccess('Symptom entry deleted successfully.');
+      // Refresh audit events to show the SYMPTOM_DELETED event
+      const auditRes = await fetch('/api/audit/me');
+      if (auditRes.ok) {
+        const auditData = await auditRes.json();
+        setEvents(auditData.events ?? []);
+      }
+    } catch (err) {
+      setSymptomsError(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setDeletingSymptomId(null);
     }
   };
 
@@ -436,6 +531,59 @@ export default function PrivacyPage(): React.ReactNode {
                       {deletingId === session.id ? 'Deleting…' : 'Delete Summary'}
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* ── Symptom Entries Section ──────────────────────────────────────── */}
+        <section className="mt-10">
+          <h2 className="text-lg font-medium text-text mb-4">Symptom Entries</h2>
+
+          {symptomsLoading && (
+            <p className="text-text-muted text-sm">Loading symptom entries&hellip;</p>
+          )}
+
+          {symptomsError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm mb-4">
+              Error: {symptomsError}
+            </div>
+          )}
+
+          {!symptomsLoading && symptoms.length === 0 && (
+            <div className="bg-surface border border-text/10 rounded-lg p-8 text-center">
+              <p className="text-text-muted text-sm">No symptom entries yet.</p>
+              <p className="text-xs text-text-muted mt-1">
+                Record what you are experiencing from the summary page after a check-in.
+              </p>
+            </div>
+          )}
+
+          {!symptomsLoading && symptoms.length > 0 && (
+            <div className="space-y-3">
+              {symptoms.map((symptom) => (
+                <div
+                  key={symptom.id}
+                  className="bg-surface border border-text/10 rounded-lg p-4"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div>
+                      <p className="text-sm font-medium text-text">{symptom.text}</p>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        {SYMPTOM_CATEGORY_LABELS[symptom.category] ?? symptom.category} &bull; {' '}
+                        {symptom.severity} &bull; {symptom.frequency.replace(/_/g, ' ')}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteSymptom(symptom.id)}
+                      disabled={deletingSymptomId === symptom.id}
+                      className="text-xs text-red-600 hover:text-red-800 font-medium px-3 py-1 rounded border border-red-200 hover:border-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      {deletingSymptomId === symptom.id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-text-muted">Impact: {symptom.impact}</p>
                 </div>
               ))}
             </div>

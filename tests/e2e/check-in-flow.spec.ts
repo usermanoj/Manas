@@ -5,7 +5,7 @@ test.describe('Check-in E2E Flow', () => {
     baseURL: 'http://localhost:3000',
   });
 
-  test('completes full check-in to confirmed summary flow', async ({ page }) => {
+  test('completes chat-style check-in to confirmed summary flow', async ({ page }) => {
     // Set longer timeout for the full flow (API calls + navigation)
     test.setTimeout(60_000);
 
@@ -28,88 +28,40 @@ test.describe('Check-in E2E Flow', () => {
     await expect(beginBtn).toBeVisible();
     await beginBtn.click();
 
-    // Wait for step 1 to appear (progress bar shows Step 1)
-    const progress = page.getByTestId('step-progress');
-    await expect(progress).toBeVisible({ timeout: 10_000 });
-    await expect(progress).toContainText('Step 1 of 6');
+    // Wait for the chat interface to appear
+    const chatInput = page.getByTestId('chat-input');
+    await expect(chatInput).toBeVisible({ timeout: 10_000 });
 
     // -----------------------------------------------------------------------
-    // 4. Step 1: Type a primary concern and submit
+    // 4. Send a primary concern message
     // -----------------------------------------------------------------------
-    const concernInput = page.getByTestId('primary-concern-input');
-    await expect(concernInput).toBeVisible();
-    await concernInput.fill('I have been feeling overwhelmed with work deadlines and unable to sleep well.');
+    await chatInput.fill('I have been feeling overwhelmed with work deadlines and unable to sleep well.');
 
-    const submitBtn = page.getByTestId('primary-concern-submit');
-    await expect(submitBtn).toBeEnabled();
-    await submitBtn.click();
+    const sendBtn = page.getByTestId('chat-submit');
+    await expect(sendBtn).toBeEnabled();
+    await sendBtn.click();
 
     // -----------------------------------------------------------------------
-    // 5. Wait for AI response to appear
+    // 5. Wait for AI response to appear with techniques or symptoms
     // -----------------------------------------------------------------------
-    // The mock provider should respond quickly.
-    // Wait for the AI response bubble to appear, then for Next to be enabled.
     const aiResponse = page.getByTestId('ai-response');
     await expect(aiResponse).toBeVisible({ timeout: 15_000 });
-
-    const nextBtn = page.getByTestId('next-step');
-    await expect(nextBtn).toBeEnabled();
+    await expect(aiResponse).not.toBeEmpty();
 
     // -----------------------------------------------------------------------
-    // 6. Step 2: Select "A few weeks" duration
+    // 6. Answer a follow-up question to complete structured fields
     // -----------------------------------------------------------------------
-    await nextBtn.click();
-    await expect(progress).toContainText('Step 2 of 6');
+    await chatInput.fill('It has been going on for a few weeks. My sleep is mildly affected, daily routine has mild impact, and I am looking for self-reflection exercises. I feel safe.');
+    await sendBtn.click();
 
-    const durationOption = page.getByTestId('option-duration-weeks');
-    await expect(durationOption).toBeVisible();
-    await durationOption.click();
-
-    // -----------------------------------------------------------------------
-    // 7. Step 3: Select "Mild impact" sleep
-    // -----------------------------------------------------------------------
-    await page.getByTestId('next-step').click();
-    await expect(progress).toContainText('Step 3 of 6');
-
-    const sleepOption = page.getByTestId('option-sleep_impact-mild');
-    await expect(sleepOption).toBeVisible();
-    await sleepOption.click();
+    // Wait for the second AI response
+    await expect(page.getByTestId('ai-response').nth(1)).toBeVisible({ timeout: 15_000 });
 
     // -----------------------------------------------------------------------
-    // 8. Step 4: Select "Mild impact" functioning
-    // -----------------------------------------------------------------------
-    await page.getByTestId('next-step').click();
-    await expect(progress).toContainText('Step 4 of 6');
-
-    const functioningOption = page.getByTestId('option-daily_functioning_impact-mild');
-    await expect(functioningOption).toBeVisible();
-    await functioningOption.click();
-
-    // -----------------------------------------------------------------------
-    // 9. Step 5: Select "Professional support"
-    // -----------------------------------------------------------------------
-    await page.getByTestId('next-step').click();
-    await expect(progress).toContainText('Step 5 of 6');
-
-    const supportOption = page.getByTestId('option-support_preference-professional_support');
-    await expect(supportOption).toBeVisible();
-    await supportOption.click();
-
-    // -----------------------------------------------------------------------
-    // 10. Step 6: Select "Yes" for safety
-    // -----------------------------------------------------------------------
-    await page.getByTestId('next-step').click();
-    await expect(progress).toContainText('Step 6 of 6');
-
-    const safetyOption = page.getByTestId('option-safety_response-yes');
-    await expect(safetyOption).toBeVisible();
-    await safetyOption.click();
-
-    // -----------------------------------------------------------------------
-    // 11. Complete the check-in → should navigate to /summary
+    // 7. Complete the check-in → should navigate to /summary
     // -----------------------------------------------------------------------
     const completeBtn = page.getByTestId('complete-check-in');
-    await expect(completeBtn).toBeEnabled();
+    await expect(completeBtn).toBeEnabled({ timeout: 10_000 });
     await completeBtn.click();
 
     // Wait for navigation to /summary
@@ -120,6 +72,10 @@ test.describe('Check-in E2E Flow', () => {
     // -----------------------------------------------------------------------
     const draftSummary = page.getByTestId('draft-summary');
     await expect(draftSummary).toBeVisible({ timeout: 15_000 });
+
+    // Verify sources / citations panel (Phase 3 enhancement)
+    const sourcesPanel = page.getByTestId('sources-panel');
+    await expect(sourcesPanel).toBeVisible({ timeout: 10_000 });
 
     // -----------------------------------------------------------------------
     // 13. Optionally edit a field — change sleep impact to "No impact"
@@ -142,6 +98,9 @@ test.describe('Check-in E2E Flow', () => {
     // -----------------------------------------------------------------------
     const confirmedSummary = page.getByTestId('confirmed-summary');
     await expect(confirmedSummary).toBeVisible({ timeout: 15_000 });
+
+    // Sources panel remains visible on confirmed summary
+    await expect(page.getByTestId('sources-panel')).toBeVisible({ timeout: 10_000 });
 
     // Verify the routing result is displayed
     const finalRouting = page.getByTestId('final-routing');

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServices } from '@/lib/services';
 import { AuditEventType } from '@/domain/audit';
 import type { ConsentRecord } from '@/domain/repositories';
+import { requireProfessional } from '@/domain/auth';
 import { randomUUID } from 'node:crypto';
 
 /**
@@ -16,10 +17,15 @@ const CLINICIAN_VISIBLE_STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Demo-mode clinician profile ID.
- * In production this would come from the auth session.
+ * Maps a logged-in professional to their provider profile.
+ * For the demo, each professional account is linked to one provider via providerId.
  */
-const DEMO_CLINICIAN_PROFILE_ID = 'profile-dr-maya-rao';
+async function getClinicianProfileId(): Promise<string | null> {
+  const session = await requireProfessional();
+  const services = createServices();
+  const provider = await services.providerRepo.findAll({ id: session.providerId });
+  return provider[0]?.profileId ?? null;
+}
 
 /**
  * Query the clinician inbox: returns SENT-or-later handoffs for providers
@@ -103,17 +109,23 @@ export async function getClinicianInboxHandoffs(
  */
 export async function GET(): Promise<NextResponse> {
   try {
+    const clinicianProfileId = await getClinicianProfileId();
+    if (!clinicianProfileId) {
+      return NextResponse.json({ error: 'Provider profile not found.' }, { status: 404 });
+    }
+
     const services = createServices();
     const handoffs = await getClinicianInboxHandoffs(
-      DEMO_CLINICIAN_PROFILE_ID,
+      clinicianProfileId,
       services,
     );
 
     return NextResponse.json({ handoffs });
-  } catch {
+  } catch (e) {
+    const status = e instanceof Error && e.message === 'Unauthorized' ? 401 : 500;
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 },
+      { error: e instanceof Error ? e.message : 'Internal server error' },
+      { status },
     );
   }
 }

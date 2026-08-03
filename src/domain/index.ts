@@ -14,6 +14,39 @@ export type {
   ModelGatewayContext,
 } from './ai';
 
+// ─── Wellbeing / Proactive Companion Engine ────────────────────────────────────
+export {
+  ProactiveWellbeingEngine,
+  CONCERN_ARCHETYPES,
+  getArchetype,
+  listArchetypes,
+  WELLBEING_TECHNIQUES,
+  getTechniqueById,
+  getTechniquesForArchetype,
+  listTechniques,
+  getCitationsForTechniqueIds,
+  inferSymptoms,
+  applyUserSeverity,
+  refineSymptomText,
+  StaticCitationService,
+  WebCitationService,
+  HybridCitationService,
+  buildCitationQuery,
+} from './wellbeing';
+export type {
+  ConcernArchetype,
+  ArchetypeDefinition,
+  Technique,
+  Citation,
+  InferredSymptom,
+  CitationService,
+  CitationQuery,
+  CitationResult,
+  ProactiveEngineInput,
+  ProactiveResponse,
+  PreviousSessionContext,
+} from './wellbeing';
+
 // ─── State Machines ────────────────────────────────────────────────────────────
 export {
   CHECK_IN_TRANSITIONS,
@@ -56,6 +89,9 @@ export {
   SEED_CARE_PLAN_VERSIONS,
   SEED_HANDOFFS,
   SEED_CONSENT_RECORDS,
+  SEED_USER_ACCOUNTS,
+  SEED_PROFESSIONAL_ACCOUNTS,
+  SEED_SYMPTOM_ENTRIES,
 } from './repositories';
 export type {
   Profile,
@@ -71,11 +107,30 @@ export type {
   CarePlanVersion,
   AuditEvent,
   Repository,
+  UserAccount,
+  ProfessionalAccount,
+  SymptomEntry,
+  SymptomCategory,
+  SymptomSeverity,
+  SymptomFrequency,
 } from './repositories';
 
 // ─── Audit ─────────────────────────────────────────────────────────────────────
 export { InMemoryAuditLogger, AuditEventType } from './audit';
 export type { AuditLogger } from './audit';
+
+// ─── Auth ──────────────────────────────────────────────────────────────────────
+export { AuthService, hashPassword, verifyPassword } from './auth';
+export type { AuthServiceDeps, UserRegistrationInput, AuthResult, SessionPayload } from './auth';
+export { createSession, getSession, clearSession, requireUser, requireProfessional } from './auth';
+
+// ─── Symptoms ──────────────────────────────────────────────────────────────────
+export { SymptomService } from './symptoms';
+export type { SymptomServiceDeps, RecordSymptomInput } from './symptoms';
+
+// ─── Chatbot ───────────────────────────────────────────────────────────────────
+export { ChatbotService, ChatbotResponseSchema } from './chatbot';
+export type { ChatbotServiceDeps, ChatMessage, ChatbotResponse } from './chatbot';
 
 // ─── Safety ────────────────────────────────────────────────────────────────────
 export { checkPreGenSafety, checkPostGenSafety } from './safety';

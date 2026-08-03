@@ -174,13 +174,24 @@ describe('CheckInOrchestrator — handleStep', () => {
     ).rejects.toThrow(/Invalid check-in step/);
   });
 
-  it('rejects invalid enum value for duration', async () => {
+  it('accepts free text on non-primary steps and extracts structured fields', async () => {
     // Must first transition INITIATED → IN_PROGRESS
     await orchestrator.handleStep(sessionId, 'primary_concern', 'Work stress', {});
 
-    await expect(
-      orchestrator.handleStep(sessionId, 'duration', 'years', {}),
-    ).rejects.toThrow(/Invalid value/);
+    const result = await orchestrator.handleStep(
+      sessionId,
+      'duration',
+      'It has been going on for a few weeks and affecting my sleep significantly',
+      { primary_concern: 'Work stress' },
+    );
+
+    expect(result.currentStep).toBe('duration');
+    expect(result.userFacingResponse).toBeDefined();
+    expect(result.userFacingResponse.length).toBeGreaterThan(0);
+    expect(result.extractedUpdates.concern_duration).toBe('weeks');
+    expect(result.extractedUpdates.sleep_impact).toBe('significant');
+    expect(Array.isArray(result.techniques)).toBe(true);
+    expect(Array.isArray(result.inferredSymptoms)).toBe(true);
   });
 
   it('rejects primary_concern exceeding 1000 chars', async () => {

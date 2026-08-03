@@ -22,6 +22,8 @@ export type {
   CompleteCheckInResponse,
   ConfirmCheckInRequest,
   ConfirmCheckInResponse,
+  TechniqueSuggestion,
+  InferredSymptomSuggestion,
 } from './schemas';
 export { MockModelGateway, FallbackModelGateway } from './model-gateway';
 export type { ModelGateway, ModelGatewayContext } from './model-gateway';

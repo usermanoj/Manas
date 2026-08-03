@@ -1,115 +1,116 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layout } from '@/components/Layout';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { BRAND } from '@/lib/config/brand';
-import type { StructuredCheckIn, CompleteCheckInResponse } from '@/domain';
-import { StepProgress } from '@/components/check-in/StepProgress';
-import { ChatBubble } from '@/components/check-in/ChatBubble';
-import { FreeTextInput } from '@/components/check-in/FreeTextInput';
-import { OptionSelector, type OptionItem } from '@/components/check-in/OptionSelector';
+import type { StructuredCheckIn, CompleteCheckInResponse, PostMessageResponse } from '@/domain/ai';
+import { CompanionMessage } from '@/components/check-in/CompanionMessage';
+import { ChatInput } from '@/components/check-in/ChatInput';
 import { FormFallback } from '@/components/check-in/FormFallback';
 
 // ---------------------------------------------------------------------------
-// Constants
+// Constants & types
 // ---------------------------------------------------------------------------
-const STORAGE_KEY = 'manas-check-in';
-const TOTAL_STEPS = 6;
+const STORAGE_KEY = 'manas-check-in-v2';
 
-const STEP_NAMES = [
-  'primary_concern',
-  'duration',
-  'sleep_impact',
-  'daily_functioning_impact',
-  'support_preference',
-  'safety_response',
-] as const;
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  response?: PostMessageResponse;
+}
 
-const STEP_PROMPTS: Record<number, string> = {
-  1: 'What has been feeling most difficult recently?',
-  2: 'How long has this been going on?',
-  3: 'How has this affected your sleep?',
-  4: 'How has this affected your daily functioning?',
-  5: 'What kind of support are you looking for?',
-  6: 'For this demonstration, do you feel safe right now?',
-};
-
-const STEP_OPTIONS: Record<number, OptionItem[]> = {
-  2: [
-    { value: 'days', label: 'A few days' },
-    { value: 'weeks', label: 'A few weeks' },
-    { value: 'months', label: 'Several months' },
-    { value: 'over_year', label: 'Over a year' },
-  ],
-  3: [
-    { value: 'none', label: 'No impact' },
-    { value: 'mild', label: 'Mild impact' },
-    { value: 'significant', label: 'Significant impact' },
-    { value: 'severe', label: 'Severe impact' },
-  ],
-  4: [
-    { value: 'none', label: 'No impact' },
-    { value: 'mild', label: 'Mild impact' },
-    { value: 'moderate', label: 'Moderate impact' },
-    { value: 'significant', label: 'Significant impact' },
-  ],
-  5: [
-    { value: 'general_reflection', label: 'General reflection' },
-    { value: 'professional_support', label: 'Professional support' },
-    { value: 'immediate_resources', label: 'Immediate resources' },
-  ],
-  6: [
-    { value: 'yes', label: 'Yes' },
-    { value: 'no', label: 'No' },
-    { value: 'prefer_not_to_answer', label: 'Prefer not to answer' },
-  ],
-};
-
-// Maps step number → StructuredCheckIn field name (steps 2-6)
-const STRUCTURED_FIELD: Record<number, keyof StructuredCheckIn> = {
-  2: 'concern_duration',
-  3: 'sleep_impact',
-  4: 'daily_functioning_impact',
-  5: 'support_preference',
-  6: 'feels_safe',
-};
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-interface CheckInState {
+interface CheckInStateV2 {
   sessionId: string | null;
-  currentStep: number;
-  answers: Record<string, string>;
-  aiResponse: string | null;
+  messages: ChatMessage[];
   structuredAnswers: Partial<StructuredCheckIn>;
   mode: 'GUEST' | 'CONNECTED_CARE';
   fallbackMode: boolean;
+  completeResponse?: CompleteCheckInResponse;
 }
 
-const DEFAULT_STATE: CheckInState = {
+const DEFAULT_STATE: CheckInStateV2 = {
   sessionId: null,
-  currentStep: 0,
-  answers: {},
-  aiResponse: null,
+  messages: [],
   structuredAnswers: {},
   mode: 'GUEST',
   fallbackMode: false,
 };
+
+const WELCOME_MESSAGE =
+  "Hi, I'm your Manas wellbeing companion. I'm here to listen, not to diagnose. " +
+  "Tell me, in your own words, what has been feeling most difficult recently?";
+
+function createEmptyResponse(overrides?: Partial<PostMessageResponse>): PostMessageResponse {
+  return {
+    userFacingResponse: '',
+    extractedUpdates: {},
+    requestedFollowUp: null,
+    modelVersion: 'mock-v1',
+    promptVersion: 'prompt-v1',
+    fallbackUsed: false,
+    isComplete: false,
+    archetypes: [],
+    primaryArchetype: 'general_wellbeing',
+    techniques: [],
+    followUpQuestions: [],
+    inferredSymptoms: [],
+    safetyFlag: false,
+    safetyMessage: null,
+    crossSessionInsight: null,
+    citations: [],
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function buildFinalSummary(
+  structured: Partial<StructuredCheckIn>,
+  lastResponse?: PostMessageResponse,
+): StructuredCheckIn {
+  const primaryConcern = structured.primary_concern?.trim() || 'General wellbeing check-in';
+  const keyPoints = primaryConcern
+    .split(/[.!?]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .slice(0, 10);
+
+  return {
+    primary_concern: primaryConcern,
+    concern_duration: (structured.concern_duration ?? 'days') as StructuredCheckIn['concern_duration'],
+    sleep_impact: (structured.sleep_impact ?? 'none') as StructuredCheckIn['sleep_impact'],
+    daily_functioning_impact: (structured.daily_functioning_impact ?? 'none') as StructuredCheckIn['daily_functioning_impact'],
+    support_preference: (structured.support_preference ?? 'general_reflection') as StructuredCheckIn['support_preference'],
+    feels_safe: (structured.feels_safe ?? 'prefer_not_to_answer') as StructuredCheckIn['feels_safe'],
+    key_points: keyPoints.length > 0 ? keyPoints : [primaryConcern],
+    recordedSymptoms: structured.recordedSymptoms,
+    primaryArchetype: lastResponse?.primaryArchetype ?? structured.primaryArchetype ?? 'general_wellbeing',
+    techniquesUsed: lastResponse?.techniques.map((t) => t.id) ?? structured.techniquesUsed,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export default function CheckInPage(): React.ReactNode {
   const router = useRouter();
+  const { user } = useAuth();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Hydration guard: avoid reading sessionStorage during SSR.
   const [mounted, setMounted] = useState(false);
-  const [state, setState] = useState<CheckInState>(DEFAULT_STATE);
-
-  // Local UI state
-  const [primaryText, setPrimaryText] = useState('');
+  const [state, setState] = useState<CheckInStateV2>(DEFAULT_STATE);
+  const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -120,26 +121,28 @@ export default function CheckInPage(): React.ReactNode {
     try {
       const stored = sessionStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored) as CheckInState;
+        const parsed = JSON.parse(stored) as CheckInStateV2;
         setState(parsed);
-        if (parsed.answers['primary_concern']) {
-          setPrimaryText(parsed.answers['primary_concern']);
-        }
       }
     } catch {
       sessionStorage.removeItem(STORAGE_KEY);
     }
   }, []);
 
-  // ---- Persist on every state change ----
+  // ---- Persist state ----
   useEffect(() => {
     if (!mounted) return;
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      // Storage full or unavailable — continue silently.
+      // Storage unavailable — continue silently.
     }
   }, [state, mounted]);
+
+  // ---- Scroll to bottom on new messages ----
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [state.messages]);
 
   // ---- API helpers ----
   const createSession = useCallback(async (): Promise<string> => {
@@ -154,7 +157,7 @@ export default function CheckInPage(): React.ReactNode {
   }, [state.mode]);
 
   const postMessage = useCallback(
-    async (sessionId: string, content: string, structured: Partial<StructuredCheckIn>): Promise<string> => {
+    async (sessionId: string, content: string, structured: Partial<StructuredCheckIn>): Promise<PostMessageResponse> => {
       const res = await fetch(`/api/check-ins/${sessionId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -165,8 +168,7 @@ export default function CheckInPage(): React.ReactNode {
         }),
       });
       if (!res.ok) throw new Error(`Failed to send message (${res.status})`);
-      const data = (await res.json()) as { userFacingResponse: string };
-      return data.userFacingResponse;
+      return (await res.json()) as PostMessageResponse;
     },
     [],
   );
@@ -184,159 +186,233 @@ export default function CheckInPage(): React.ReactNode {
     [],
   );
 
+  const recordSymptomApi = useCallback(
+    async (symptom: PostMessageResponse['inferredSymptoms'][number], sessionId?: string): Promise<void> => {
+      if (!user) return;
+      const res = await fetch('/api/symptoms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: symptom.text,
+          category: symptom.category,
+          severity: symptom.severity,
+          frequency: symptom.frequency,
+          impact: symptom.impact,
+          sessionId,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to record symptom');
+    },
+    [user],
+  );
+
   // ---- Actions ----
   const startCheckIn = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const sessionId = await createSession();
-      setState((prev) => ({ ...prev, sessionId, currentStep: 1 }));
+      const welcomeMessage: ChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: WELCOME_MESSAGE,
+        response: createEmptyResponse({
+          userFacingResponse: WELCOME_MESSAGE,
+          requestedFollowUp: 'primary_concern',
+        }),
+      };
+      setState((prev) => ({
+        ...prev,
+        sessionId,
+        messages: [welcomeMessage],
+        structuredAnswers: {},
+      }));
     } catch {
-      setState((prev) => ({ ...prev, fallbackMode: true, currentStep: 1 }));
+      const fallbackSessionId = generateId();
+      setState((prev) => ({
+        ...prev,
+        sessionId: fallbackSessionId,
+        fallbackMode: true,
+        messages: [
+          {
+            id: generateId(),
+            role: 'assistant',
+            content: WELCOME_MESSAGE,
+          },
+        ],
+      }));
       setError('Could not connect to the server. Switched to offline form mode.');
     } finally {
       setIsLoading(false);
     }
   }, [createSession]);
 
-  const handleSubmitStep1 = useCallback(async () => {
-    const text = primaryText.trim();
-    if (text.length === 0 || text.length > 1000) return;
+  const handleSend = useCallback(
+    async (textOverride?: string) => {
+      const text = (textOverride ?? inputText).trim();
+      if (text.length === 0 || text.length > 1000) return;
+      if (!state.sessionId) return;
 
+      setIsLoading(true);
+      setError(null);
+      setInputText('');
+
+      const userMessage: ChatMessage = {
+        id: generateId(),
+        role: 'user',
+        content: text,
+      };
+
+      setState((prev) => ({
+        ...prev,
+        messages: [...prev.messages, userMessage],
+      }));
+
+      if (state.fallbackMode) {
+        const fallbackResponse: ChatMessage = {
+          id: generateId(),
+          role: 'assistant',
+          content: 'Your response has been noted. Please continue sharing or complete the check-in.',
+        };
+        setState((prev) => ({
+          ...prev,
+          structuredAnswers: { ...prev.structuredAnswers, primary_concern: text },
+          messages: [...prev.messages, fallbackResponse],
+        }));
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await postMessage(state.sessionId, text, state.structuredAnswers);
+        const assistantMessage: ChatMessage = {
+          id: generateId(),
+          role: 'assistant',
+          content: response.userFacingResponse,
+          response,
+        };
+        setState((prev) => ({
+          ...prev,
+          structuredAnswers: {
+            ...prev.structuredAnswers,
+            ...(response.extractedUpdates as Partial<StructuredCheckIn>),
+          },
+          messages: [...prev.messages, assistantMessage],
+        }));
+      } catch {
+        setState((prev) => ({
+          ...prev,
+          fallbackMode: true,
+          messages: [
+            ...prev.messages,
+            {
+              id: generateId(),
+              role: 'assistant',
+              content: 'Connection lost. Your answers are being saved locally. Please continue or complete the check-in.',
+            },
+          ],
+        }));
+        setError('Connection lost. Continuing in offline mode.');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [inputText, state.sessionId, state.fallbackMode, state.structuredAnswers, postMessage],
+  );
+
+  const handleQuickReply = useCallback(
+    (text: string) => {
+      if (isLoading) return;
+      void handleSend(text);
+    },
+    [handleSend, isLoading],
+  );
+
+  const handleRecordSymptom = useCallback(
+    async (symptom: PostMessageResponse['inferredSymptoms'][number]) => {
+      const recordedEntry = {
+        id: generateId(),
+        userId: user?.sub ?? 'guest',
+        sessionId: state.sessionId ?? undefined,
+        text: symptom.text,
+        category: symptom.category,
+        severity: symptom.severity,
+        frequency: symptom.frequency,
+        impact: symptom.impact,
+        createdAt: new Date(),
+      };
+
+      setState((prev) => ({
+        ...prev,
+        structuredAnswers: {
+          ...prev.structuredAnswers,
+          recordedSymptoms: [...(prev.structuredAnswers.recordedSymptoms ?? []), recordedEntry],
+        },
+      }));
+
+      if (user && state.sessionId) {
+        try {
+          await recordSymptomApi(symptom, state.sessionId);
+        } catch {
+          setError('Could not record symptom to your profile, but it is saved with this check-in.');
+        }
+      }
+    },
+    [user, state.sessionId, recordSymptomApi],
+  );
+
+  const handleComplete = useCallback(async () => {
+    if (!state.sessionId) return;
     setIsLoading(true);
     setError(null);
 
-    const updatedStructured: Partial<StructuredCheckIn> = {
-      ...state.structuredAnswers,
-      primary_concern: text,
-    };
+    const lastAssistant = [...state.messages].reverse().find((m) => m.role === 'assistant' && m.response);
+    const finalStructured = buildFinalSummary(state.structuredAnswers, lastAssistant?.response);
 
-    setState((prev) => ({
-      ...prev,
-      answers: { ...prev.answers, primary_concern: text },
-      structuredAnswers: updatedStructured,
-      aiResponse: null,
-    }));
-
-    if (state.fallbackMode || !state.sessionId) {
-      // Offline — no API call, just move forward.
-      setState((prev) => ({
-        ...prev,
-        answers: { ...prev.answers, primary_concern: text },
-        structuredAnswers: updatedStructured,
-        aiResponse: 'Your response has been noted. Please continue to the next question.',
-      }));
-      setIsLoading(false);
-      return;
+    let completeResponse: CompleteCheckInResponse | undefined;
+    if (!state.fallbackMode) {
+      try {
+        completeResponse = (await completeSession(state.sessionId, finalStructured)) ?? undefined;
+        if (completeResponse) {
+          setState((prev) => ({ ...prev, completeResponse }));
+        }
+      } catch {
+        // API failed — still persist structuredAnswers for offline recovery.
+      }
     }
 
     try {
-      const aiResponse = await postMessage(state.sessionId, text, updatedStructured);
-      setState((prev) => ({
-        ...prev,
-        answers: { ...prev.answers, primary_concern: text },
-        structuredAnswers: updatedStructured,
-        aiResponse,
-      }));
+      const persistedState = {
+        ...state,
+        structuredAnswers: finalStructured,
+      };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState));
+
+      // Also store in the legacy key used by the summary page for the fast path.
+      const companionContext = lastAssistant?.response
+        ? {
+            primaryArchetype: lastAssistant.response.primaryArchetype,
+            techniques: lastAssistant.response.techniques.map((t) => ({ id: t.id, name: t.name })),
+            citations: lastAssistant.response.citations,
+            crossSessionInsight: lastAssistant.response.crossSessionInsight,
+          }
+        : undefined;
+      sessionStorage.setItem(
+        'manas-check-in',
+        JSON.stringify({
+          sessionId: state.sessionId,
+          structuredAnswers: finalStructured,
+          completeResponse: completeResponse,
+          companionContext,
+        }),
+      );
     } catch {
-      // Switch to fallback on failure.
-      setState((prev) => ({
-        ...prev,
-        fallbackMode: true,
-        answers: { ...prev.answers, primary_concern: text },
-        structuredAnswers: updatedStructured,
-        aiResponse: 'Your response has been noted. Please continue to the next question.',
-      }));
-      setError('Connection lost. Continuing in offline mode.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [primaryText, state.sessionId, state.fallbackMode, state.structuredAnswers, postMessage]);
-
-  const handleOptionSelect = useCallback(
-    (value: string) => {
-      const stepName = STEP_NAMES[state.currentStep - 1];
-      const fieldName = STRUCTURED_FIELD[state.currentStep];
-
-      setState((prev) => {
-        const newAnswers = { ...prev.answers, [stepName]: value };
-        const newStructured = { ...prev.structuredAnswers };
-        if (fieldName) {
-          (newStructured as Record<string, unknown>)[fieldName] = value;
-        }
-        return { ...prev, answers: newAnswers, structuredAnswers: newStructured };
-      });
-    },
-    [state.currentStep],
-  );
-
-  const goNext = useCallback(() => {
-    if (state.currentStep < TOTAL_STEPS) {
-      setState((prev) => ({ ...prev, currentStep: prev.currentStep + 1 }));
-    }
-  }, [state.currentStep]);
-
-  const goPrev = useCallback(() => {
-    if (state.currentStep > 1) {
-      setState((prev) => ({ ...prev, currentStep: prev.currentStep - 1 }));
-    }
-  }, [state.currentStep]);
-
-  const handleComplete = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    // Build complete StructuredCheckIn with key_points derived from primary concern.
-    const finalStructured: StructuredCheckIn = {
-      primary_concern: state.structuredAnswers.primary_concern ?? '',
-      concern_duration: (state.structuredAnswers.concern_duration ?? 'days') as StructuredCheckIn['concern_duration'],
-      sleep_impact: (state.structuredAnswers.sleep_impact ?? 'none') as StructuredCheckIn['sleep_impact'],
-      daily_functioning_impact: (state.structuredAnswers.daily_functioning_impact ?? 'none') as StructuredCheckIn['daily_functioning_impact'],
-      support_preference: (state.structuredAnswers.support_preference ?? 'general_reflection') as StructuredCheckIn['support_preference'],
-      feels_safe: (state.structuredAnswers.feels_safe ?? 'prefer_not_to_answer') as StructuredCheckIn['feels_safe'],
-      key_points: (state.structuredAnswers.primary_concern ?? '')
-        .split(/[.!?]+/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
-        .slice(0, 10),
-    };
-
-    if (!state.fallbackMode && state.sessionId) {
-      try {
-        const completeResponse = await completeSession(state.sessionId, finalStructured);
-
-        // Persist the /complete response in sessionStorage so the summary page
-        // can read it without calling /complete a second time.
-        if (completeResponse) {
-          const stored = sessionStorage.getItem(STORAGE_KEY);
-          const base = stored ? JSON.parse(stored) as CheckInState : ({} as CheckInState);
-          const updated = {
-            ...base,
-            structuredAnswers: finalStructured,
-            completeResponse,
-          };
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-        }
-      } catch {
-        // API call failed — still persist structuredAnswers so the summary page
-        // can use the server-side GET fallback to recover the session.
-        const stored = sessionStorage.getItem(STORAGE_KEY);
-        const base = stored ? JSON.parse(stored) as CheckInState : ({} as CheckInState);
-        const updated = { ...base, structuredAnswers: finalStructured };
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      }
-    } else {
-      // Fallback mode or no sessionId — persist structuredAnswers for offline
-      // recovery. The summary page will use the sessionId from URL params.
-      const stored = sessionStorage.getItem(STORAGE_KEY);
-      const base = stored ? JSON.parse(stored) as CheckInState : ({} as CheckInState);
-      const updated = { ...base, structuredAnswers: finalStructured };
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      // Ignore storage errors.
     }
 
     const params = state.sessionId ? `?sessionId=${state.sessionId}` : '';
     router.push(`/summary${params}`);
-  }, [state.sessionId, state.fallbackMode, state.structuredAnswers, completeSession, router]);
+  }, [state, completeSession, router]);
 
   const handleFallbackSubmit = useCallback(
     (data: StructuredCheckIn) => {
@@ -344,22 +420,12 @@ export default function CheckInPage(): React.ReactNode {
         ...prev,
         fallbackMode: true,
         structuredAnswers: data,
-        answers: {
-          primary_concern: data.primary_concern,
-          duration: data.concern_duration,
-          sleep_impact: data.sleep_impact,
-          daily_functioning_impact: data.daily_functioning_impact,
-          support_preference: data.support_preference,
-          safety_response: data.feels_safe,
-        },
       }));
-
       try {
         sessionStorage.removeItem(STORAGE_KEY);
       } catch {
         // Ignore.
       }
-
       router.push('/summary');
     },
     [router],
@@ -368,13 +434,11 @@ export default function CheckInPage(): React.ReactNode {
   const dismissError = useCallback(() => setError(null), []);
 
   // ---- Derived values ----
-  const currentStepName = state.currentStep >= 1 ? STEP_NAMES[state.currentStep - 1] : null;
-  const currentAnswer = currentStepName ? state.answers[currentStepName] ?? null : null;
-  const step1Complete = Boolean(state.answers['primary_concern'] && state.aiResponse);
-  const currentStepHasAnswer = Boolean(currentAnswer);
-  const isLastStep = state.currentStep === TOTAL_STEPS;
+  const lastAssistant = [...state.messages].reverse().find((m) => m.role === 'assistant' && m.response);
+  const isComplete = Boolean(lastAssistant?.response?.isComplete);
+  const hasPrimaryConcern = Boolean(state.structuredAnswers.primary_concern);
 
-  // Don't render interactive content until after hydration.
+  // ---- Render: loading hydration ----
   if (!mounted) {
     return (
       <Layout>
@@ -387,8 +451,8 @@ export default function CheckInPage(): React.ReactNode {
     );
   }
 
-  // ---- Render: Fallback form mode ----
-  if (state.fallbackMode && state.currentStep >= 1) {
+  // ---- Render: fallback form mode ----
+  if (state.fallbackMode && state.messages.length > 0) {
     return (
       <Layout>
         <div className={`${BRAND.spacing.pageMaxWidth} mx-auto px-4 ${BRAND.spacing.sectionPadding}`}>
@@ -405,8 +469,8 @@ export default function CheckInPage(): React.ReactNode {
     );
   }
 
-  // ---- Render: Not started ----
-  if (state.currentStep === 0) {
+  // ---- Render: not started ----
+  if (state.messages.length === 0) {
     return (
       <Layout>
         <div className={`${BRAND.spacing.pageMaxWidth} mx-auto px-4 ${BRAND.spacing.sectionPadding}`}>
@@ -415,7 +479,8 @@ export default function CheckInPage(): React.ReactNode {
               Check-In with {BRAND.name}
             </h1>
             <p className={`${BRAND.typography.bodySize} text-text-muted mb-8 max-w-xl mx-auto`}>
-              A brief, guided conversation to help you reflect on your wellbeing. Your responses stay private and are never shared without your consent.
+              An open-ended, private conversation with your AI wellbeing companion. Share what&apos;s on your mind —
+              we&apos;ll reflect together and suggest evidence-based techniques.
             </p>
             <button
               data-testid="begin-check-in"
@@ -438,110 +503,97 @@ export default function CheckInPage(): React.ReactNode {
     );
   }
 
-  // ---- Render: Wizard steps 1–6 ----
+  // ---- Render: chat interface ----
   return (
     <Layout>
       <div className={`${BRAND.spacing.pageMaxWidth} mx-auto px-4 ${BRAND.spacing.sectionPadding}`}>
-        <h1 className={`${BRAND.typography.headingSize} font-semibold text-text mb-2`}>Check-In</h1>
-
-        {/* Error banner */}
-        {error && (
-          <div className="mb-4 bg-warning/10 border border-warning/30 rounded-lg p-3 flex items-start justify-between gap-3" role="alert">
-            <p className="text-sm text-text">{error}</p>
-            <button type="button" onClick={dismissError} className="text-text-muted hover:text-text text-sm shrink-0">Dismiss</button>
-          </div>
-        )}
-
-        {/* Progress */}
-        <StepProgress currentStep={state.currentStep} totalSteps={TOTAL_STEPS} />
-
-        {/* Step card */}
-        <div className="bg-surface rounded-xl shadow-sm border border-text/10 p-6">
-          {/* Prompt */}
-          <h2 className="text-lg md:text-xl font-medium text-text mb-4">{STEP_PROMPTS[state.currentStep]}</h2>
-
-          {/* Step 1: Free text */}
-          {state.currentStep === 1 && (
+        <div className="flex flex-col h-[calc(100vh-12rem)] md:h-[calc(100vh-10rem)]">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <FreeTextInput
-                value={primaryText}
-                onChange={setPrimaryText}
-                onSubmit={handleSubmitStep1}
-                isLoading={isLoading}
-                disabled={step1Complete}
-              />
+              <h1 className={`${BRAND.typography.headingSize} font-semibold text-text`}>Check-In</h1>
+              <p className="text-sm text-text-muted">An open conversation with your wellbeing companion</p>
+            </div>
+            {isComplete && (
+              <button
+                data-testid="complete-check-in"
+                type="button"
+                onClick={handleComplete}
+                disabled={isLoading}
+                className="px-5 py-2.5 bg-primary text-white font-medium rounded-lg hover:bg-primary-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {isLoading ? 'Completing…' : 'Complete Check-In'}
+              </button>
+            )}
+          </div>
 
-              {/* Loading indicator for AI response */}
-              {isLoading && state.answers['primary_concern'] && !state.aiResponse && (
-                <ChatBubble message="" isLoading />
-              )}
-
-              {/* AI response */}
-              {state.aiResponse && (
-                <ChatBubble message={state.aiResponse} />
-              )}
+          {/* Error banner */}
+          {error && (
+            <div className="mb-4 bg-warning/10 border border-warning/30 rounded-lg p-3 flex items-start justify-between gap-3" role="alert">
+              <p className="text-sm text-text">{error}</p>
+              <button type="button" onClick={dismissError} className="text-text-muted hover:text-text text-sm shrink-0">Dismiss</button>
             </div>
           )}
 
-          {/* Steps 2–6: Option selector */}
-          {state.currentStep >= 2 && (
-            <OptionSelector
-              options={STEP_OPTIONS[state.currentStep]}
-              selectedValue={currentAnswer}
-              onSelect={handleOptionSelect}
-              stepName={currentStepName ?? ''}
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-4">
+            {state.messages.map((message) =>
+              message.role === 'user' ? (
+                <div key={message.id} className="flex justify-end">
+                  <div className="bg-primary text-white rounded-2xl rounded-tr-sm px-5 py-3 max-w-3xl shadow-sm">
+                    <p className="leading-relaxed">{message.content}</p>
+                  </div>
+                </div>
+              ) : (
+                <div key={message.id} className="flex justify-start">
+                  <CompanionMessage
+                    response={message.response ?? createEmptyResponse({ userFacingResponse: message.content })}
+                    onQuickReply={handleQuickReply}
+                    onRecordSymptom={handleRecordSymptom}
+                    isLoading={false}
+                    disabled={isLoading}
+                  />
+                </div>
+              ),
+            )}
+            {isLoading && (
+              <div className="flex justify-start">
+                <CompanionMessage
+                  response={createEmptyResponse()}
+                  isLoading
+                />
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input */}
+          <div className="pt-4 border-t border-text/10">
+            <ChatInput
+              value={inputText}
+              onChange={setInputText}
+              onSubmit={() => void handleSend()}
+              placeholder={hasPrimaryConcern ? 'Share more…' : 'Share what has been feeling most difficult recently…'}
+              isLoading={isLoading}
+              disabled={isLoading}
             />
-          )}
+            {!isComplete && (
+              <div className="mt-3 flex items-center justify-between">
+                <p className="text-xs text-text-muted">
+                  {BRAND.disclosure}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleComplete}
+                  disabled={isLoading || !hasPrimaryConcern}
+                  className="text-sm text-primary hover:text-primary-light font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Complete now
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* Navigation */}
-        <div className="flex items-center justify-between mt-6 gap-4">
-          {/* Previous */}
-          {state.currentStep > 1 ? (
-            <button
-              data-testid="prev-step"
-              type="button"
-              onClick={goPrev}
-              className="px-5 py-2.5 border border-text/20 text-text rounded-lg hover:bg-surface transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              ← Previous
-            </button>
-          ) : (
-            <div />
-          )}
-
-          {/* Next / Complete */}
-          {isLastStep ? (
-            <button
-              data-testid="complete-check-in"
-              type="button"
-              onClick={handleComplete}
-              disabled={!currentStepHasAnswer || isLoading}
-              className="px-6 py-2.5 bg-primary text-white font-medium rounded-lg transition-colors hover:bg-primary-light disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              {isLoading ? 'Completing…' : 'Complete Check-In'}
-            </button>
-          ) : (
-            <button
-              data-testid="next-step"
-              type="button"
-              onClick={goNext}
-              disabled={
-                (state.currentStep === 1 && !step1Complete) ||
-                (state.currentStep >= 2 && !currentStepHasAnswer) ||
-                isLoading
-              }
-              className="px-6 py-2.5 bg-primary text-white font-medium rounded-lg transition-colors hover:bg-primary-light disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              Next →
-            </button>
-          )}
-        </div>
-
-        {/* Persistent disclosure reminder */}
-        <p className="mt-8 text-xs text-text-muted text-center bg-secondary/10 border border-secondary/20 rounded-lg p-3">
-          {BRAND.disclosure}
-        </p>
       </div>
     </Layout>
   );

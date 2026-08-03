@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CreateCheckInRequestSchema } from '@/domain/ai';
-import { CheckInOrchestrator } from '@/domain/check-in';
-import { createServices } from '@/lib/services';
+import { createServices, createCheckInOrchestrator } from '@/lib/services';
 
 /**
  * GET /api/check-ins
@@ -51,13 +50,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const services = createServices();
-    const orchestrator = new CheckInOrchestrator({
-      modelGateway: services.modelGateway,
-      fallbackGateway: services.fallbackGateway,
-      sessionRepo: services.sessionRepo,
-      safetyAssessmentRepo: services.safetyAssessmentRepo,
-      auditLogger: services.auditLogger,
-    });
+    const orchestrator = createCheckInOrchestrator(services);
 
     const session = await orchestrator.createSession(
       parsed.data.mode,

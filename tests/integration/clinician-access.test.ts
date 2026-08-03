@@ -14,6 +14,9 @@ import type {
   CarePlanVersion,
   ContentModule,
   ContentModuleVersion,
+  UserAccount,
+  ProfessionalAccount,
+  SymptomEntry,
 } from '@/domain/repositories';
 import type { StructuredCheckIn } from '@/domain/ai';
 import { getClinicianInboxHandoffs } from '@/app/api/clinician/handoffs/route';
@@ -38,6 +41,9 @@ function createTestServices() {
     profileRepo: new InMemoryRepository<Profile>(),
     contentModuleRepo: new InMemoryRepository<ContentModule>(),
     contentModuleVersionRepo: new InMemoryRepository<ContentModuleVersion>(),
+    userAccountRepo: new InMemoryRepository<UserAccount>(),
+    professionalAccountRepo: new InMemoryRepository<ProfessionalAccount>(),
+    symptomEntryRepo: new InMemoryRepository<SymptomEntry>(),
     unitOfWorkFactory: () => new InMemoryUnitOfWork(),
   };
 }

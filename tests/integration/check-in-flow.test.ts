@@ -188,26 +188,39 @@ describe('Check-in Integration Flow', () => {
       ).rejects.toThrow(/between 1 and 1000 characters/);
     });
 
-    it('should reject an invalid enum value for duration step', async () => {
+    it('should accept free text on duration step and extract structured answers', async () => {
       const { orchestrator } = ctx;
       const session = await orchestrator.createSession('GUEST', 'en');
       // Must first transition INITIATED → IN_PROGRESS
       await orchestrator.handleStep(session.id, 'primary_concern', 'Work stress', {});
 
-      await expect(
-        orchestrator.handleStep(session.id, 'duration', 'invalid_value', {}),
-      ).rejects.toThrow(/Invalid value "invalid_value" for step "duration"/);
+      const result = await orchestrator.handleStep(
+        session.id,
+        'duration',
+        'This has been building for a few weeks and my sleep is mildly affected',
+        {},
+      );
+
+      expect(result.userFacingResponse).toBeTruthy();
+      expect(result.extractedUpdates.concern_duration).toBe('weeks');
+      expect(result.extractedUpdates.sleep_impact).toBe('mild');
     });
 
-    it('should reject an invalid enum value for sleep_impact step', async () => {
+    it('should accept free text on sleep_impact step and keep session in progress', async () => {
       const { orchestrator } = ctx;
       const session = await orchestrator.createSession('GUEST', 'en');
       // Must first transition INITIATED → IN_PROGRESS
       await orchestrator.handleStep(session.id, 'primary_concern', 'Work stress', {});
 
-      await expect(
-        orchestrator.handleStep(session.id, 'sleep_impact', 'extreme', {}),
-      ).rejects.toThrow(/Invalid value "extreme" for step "sleep_impact"/);
+      const result = await orchestrator.handleStep(
+        session.id,
+        'sleep_impact',
+        'I wake up a few times each night and feel tired during the day',
+        {},
+      );
+
+      expect(result.userFacingResponse).toBeTruthy();
+      expect(result.isComplete).toBe(false);
     });
 
     it('should handle incomplete structured answers when completing session', async () => {
@@ -327,6 +340,74 @@ describe('Check-in Integration Flow', () => {
       );
       expect(confirmResult.routingState).toBe('GENERAL_WELLBEING');
       expect(confirmResult.edited).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 5. Proactive companion v2 features
+  // -------------------------------------------------------------------------
+  describe('proactive companion features', () => {
+    it('should return archetypes, techniques, and citations on primary_concern', async () => {
+      const { orchestrator } = ctx;
+      const session = await orchestrator.createSession('GUEST', 'en');
+
+      const result = await orchestrator.handleStep(
+        session.id,
+        'primary_concern',
+        'I feel anxious and my heart races before work meetings',
+        {},
+      );
+
+      expect(result.primaryArchetype).toBe('anxiety');
+      expect(result.archetypes).toContain('anxiety');
+      expect(result.techniques.length).toBeGreaterThan(0);
+      expect(result.techniques[0]).toHaveProperty('id');
+      expect(result.techniques[0]).toHaveProperty('citations');
+      expect(result.followUpQuestions.length).toBeGreaterThan(0);
+      expect(result.isComplete).toBe(false);
+    });
+
+    it('should infer symptoms from free text and mark completion when all fields are captured', async () => {
+      const { orchestrator } = ctx;
+      const session = await orchestrator.createSession('GUEST', 'en');
+
+      await orchestrator.handleStep(
+        session.id,
+        'primary_concern',
+        'I have been feeling really stressed at work',
+        {},
+      );
+
+      const result = await orchestrator.handleStep(
+        session.id,
+        'primary_concern',
+        'It has been going on for weeks. I cannot sleep well, I have poor focus, and I prefer self-reflection exercises. I feel safe.',
+        { primary_concern: 'I have been feeling really stressed at work' },
+      );
+
+      expect(result.extractedUpdates.concern_duration).toBe('weeks');
+      expect(result.extractedUpdates.sleep_impact).toBeDefined();
+      expect(result.extractedUpdates.daily_functioning_impact).toBeDefined();
+      expect(result.extractedUpdates.support_preference).toBe('general_reflection');
+      expect(result.extractedUpdates.feels_safe).toBe('yes');
+      expect(result.inferredSymptoms.length).toBeGreaterThan(0);
+      expect(result.isComplete).toBe(true);
+    });
+
+    it('should surface a safety flag for crisis language', async () => {
+      const { orchestrator } = ctx;
+      const session = await orchestrator.createSession('GUEST', 'en');
+
+      const result = await orchestrator.handleStep(
+        session.id,
+        'primary_concern',
+        'I want to end my life',
+        {},
+      );
+
+      expect(result.safetyFlag).toBe(true);
+      expect(result.safetyMessage).toBeTruthy();
+      expect(result.isComplete).toBe(false);
     });
   });
 });

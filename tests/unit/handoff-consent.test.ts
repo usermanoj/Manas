@@ -56,7 +56,12 @@ async function seedProvider(deps: HandoffOrchestratorDeps): Promise<void> {
     focusAreas: ['stress'],
     availability: 'Mon-Fri',
     sessionType: 'Video',
-    priceRange: '₹1,500',
+    priceRange: '$95 per session',
+    pricePerSession: 95,
+    currency: 'USD',
+    sessionDurationMinutes: 50,
+    nextAvailable: 'Tomorrow',
+    credentialsNote: 'Licensed Clinical Psychologist — fictional demo',
     bio: 'Demo provider',
     isFictionalDemo: true,
   });

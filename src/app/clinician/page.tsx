@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Layout } from '@/components/Layout';
 import { BRAND } from '@/lib/config/brand';
 
@@ -44,14 +45,21 @@ function StatusBadge({ status }: { status: string }): React.ReactNode {
 }
 
 export default function ClinicianDashboardPage(): React.ReactNode {
+  const router = useRouter();
   const [handoffs, setHandoffs] = useState<HandoffSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [unauthorized, setUnauthorized] = useState(false);
 
   useEffect(() => {
     async function fetchHandoffs() {
       try {
         const res = await fetch('/api/clinician/handoffs');
+        if (res.status === 401) {
+          setUnauthorized(true);
+          setLoading(false);
+          return;
+        }
         if (!res.ok) {
           throw new Error('Failed to fetch handoffs');
         }
@@ -79,13 +87,41 @@ export default function ClinicianDashboardPage(): React.ReactNode {
           <p className="text-text-muted">Loading handoffs&hellip;</p>
         )}
 
-        {error && (
+        {unauthorized && !loading && (
+          <div className="bg-surface border border-text/10 rounded-xl p-8 text-center max-w-md mx-auto">
+            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-text mb-2">Clinician sign-in required</h2>
+            <p className="text-text-muted text-sm mb-6">
+              Please sign in with your professional account to view your inbox.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Link
+                href="/professional/login"
+                className="inline-flex items-center justify-center px-5 py-2.5 bg-primary text-white font-medium rounded-lg hover:bg-primary-light transition-colors"
+              >
+                Sign In as Clinician
+              </Link>
+              <button
+                onClick={() => router.push('/')}
+                className="inline-flex items-center justify-center px-5 py-2.5 border border-text/20 text-text font-medium rounded-lg hover:bg-surface transition-colors"
+              >
+                Back to Home
+              </button>
+            </div>
+          </div>
+        )}
+
+        {error && !unauthorized && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
             Error: {error}
           </div>
         )}
 
-        {!loading && !error && handoffs.length === 0 && (
+        {!loading && !error && !unauthorized && handoffs.length === 0 && (
           <div className="bg-surface border border-text/10 rounded-lg p-8 text-center">
             <p className="text-text-muted">No handoffs in your inbox yet.</p>
             <p className="text-sm text-text-muted mt-2">

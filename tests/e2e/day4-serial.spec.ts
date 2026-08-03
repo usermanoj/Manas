@@ -19,11 +19,18 @@ test.describe('Day 4: Full Demo Flow', () => {
   test('completes check-in → summary → handoff → consent-and-send', async ({ page }) => {
     test.setTimeout(120_000);
 
-    // 1. Navigate to landing page
+    // 1. Sign in as the seeded demo user so the contact gate is passed
+    await page.goto('/login');
+    await expect(page.locator('h1')).toContainText('Welcome back');
+    await page.locator('input#email').fill('ananya@example.com');
+    await page.locator('input#password').fill('password123');
+    await page.getByRole('button', { name: /sign in/i }).click();
+    await page.waitForURL('**/');
+
+    // 2. Navigate to landing page and start check-in flow
     await page.goto('/');
     await expect(page.locator('h1')).toBeVisible();
 
-    // 2. Start check-in flow
     await page.getByRole('link', { name: /begin check-in/i }).click();
     await page.waitForURL('**/check-in');
 
@@ -31,59 +38,36 @@ test.describe('Day 4: Full Demo Flow', () => {
     await expect(beginBtn).toBeVisible();
     await beginBtn.click();
 
-    const progress = page.getByTestId('step-progress');
-    await expect(progress).toBeVisible({ timeout: 10_000 });
-    await expect(progress).toContainText('Step 1 of 6');
+    // 3. Chat-style check-in: send primary concern
+    const chatInput = page.getByTestId('chat-input');
+    await expect(chatInput).toBeVisible({ timeout: 10_000 });
+    await chatInput.fill('I have been feeling overwhelmed with work deadlines and unable to sleep well.');
 
-    // 3. Step 1: Primary concern
-    const concernInput = page.getByTestId('primary-concern-input');
-    await expect(concernInput).toBeVisible();
-    await concernInput.fill('I have been feeling overwhelmed with work deadlines and unable to sleep well.');
-
-    const submitBtn = page.getByTestId('primary-concern-submit');
-    await expect(submitBtn).toBeEnabled();
-    await submitBtn.click();
+    const chatSendBtn = page.getByTestId('chat-submit');
+    await expect(chatSendBtn).toBeEnabled();
+    await chatSendBtn.click();
 
     const aiResponse = page.getByTestId('ai-response');
     await expect(aiResponse).toBeVisible({ timeout: 15_000 });
 
-    const nextBtn = page.getByTestId('next-step');
-    await expect(nextBtn).toBeEnabled();
+    // 4. Answer follow-up question with remaining structured fields
+    await chatInput.fill('It has been going on for a few weeks. My sleep is mildly affected, daily routine has mild impact, and I would like professional support. I feel safe.');
+    await chatSendBtn.click();
+    await expect(page.getByTestId('ai-response').nth(1)).toBeVisible({ timeout: 15_000 });
 
-    // 4. Step 2: Duration — "A few weeks"
-    await nextBtn.click();
-    await expect(progress).toContainText('Step 2 of 6');
-    await page.getByTestId('option-duration-weeks').click();
-
-    // 5. Step 3: Sleep impact — "Mild impact"
-    await page.getByTestId('next-step').click();
-    await expect(progress).toContainText('Step 3 of 6');
-    await page.getByTestId('option-sleep_impact-mild').click();
-
-    // 6. Step 4: Daily functioning — "Mild impact"
-    await page.getByTestId('next-step').click();
-    await expect(progress).toContainText('Step 4 of 6');
-    await page.getByTestId('option-daily_functioning_impact-mild').click();
-
-    // 7. Step 5: Support preference — "Professional support"
-    await page.getByTestId('next-step').click();
-    await expect(progress).toContainText('Step 5 of 6');
-    await page.getByTestId('option-support_preference-professional_support').click();
-
-    // 8. Step 6: Safety — "Yes"
-    await page.getByTestId('next-step').click();
-    await expect(progress).toContainText('Step 6 of 6');
-    await page.getByTestId('option-safety_response-yes').click();
-
-    // 9. Complete check-in → navigate to /summary
+    // 5. Complete check-in → navigate to /summary
     const completeBtn = page.getByTestId('complete-check-in');
-    await expect(completeBtn).toBeEnabled();
+    await expect(completeBtn).toBeEnabled({ timeout: 10_000 });
     await completeBtn.click();
     await page.waitForURL('**/summary**', { timeout: 15_000 });
 
     // 10. Confirm the summary (no edits needed)
     const draftSummary = page.getByTestId('draft-summary');
     await expect(draftSummary).toBeVisible({ timeout: 15_000 });
+
+    // Phase 3: verify sources and cross-session insight panels
+    await expect(page.getByTestId('sources-panel')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('cross-session-insight')).toBeVisible({ timeout: 10_000 });
 
     const confirmBtn = page.getByTestId('confirm-summary');
     await expect(confirmBtn).toBeVisible();
@@ -92,6 +76,10 @@ test.describe('Day 4: Full Demo Flow', () => {
 
     const confirmedSummary = page.getByTestId('confirmed-summary');
     await expect(confirmedSummary).toBeVisible({ timeout: 15_000 });
+
+    // Panels persist on confirmed summary
+    await expect(page.getByTestId('sources-panel')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('cross-session-insight')).toBeVisible({ timeout: 10_000 });
 
     const finalRouting = page.getByTestId('final-routing');
     await expect(finalRouting).toBeVisible();
@@ -153,8 +141,15 @@ test.describe('Day 4: Full Demo Flow', () => {
   test('creates V1 care plan from SENT handoff through to user acceptance', async ({ page }) => {
     test.setTimeout(120_000);
 
-    // 1. Navigate to clinician inbox
-    await page.goto('/clinician');
+    // 1. Sign in as the seeded demo clinician
+    await page.goto('/professional/login');
+    await expect(page.locator('h1')).toContainText('Clinician sign in');
+    await page.locator('input#email').fill('maya.rao@manas.demo');
+    await page.locator('input#password').fill('clinician123');
+    await page.getByRole('button', { name: /sign in/i }).click();
+    await page.waitForURL('**/clinician');
+
+    // 2. Verify SENT handoff appears in inbox
     await expect(page.locator('h1')).toContainText('Clinician Inbox', { timeout: 15_000 });
 
     // 2. Verify SENT handoff appears in inbox

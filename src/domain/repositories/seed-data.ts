@@ -8,7 +8,11 @@ import {
   CarePlanVersion,
   Handoff,
   ConsentRecord,
+  UserAccount,
+  ProfessionalAccount,
+  SymptomEntry,
 } from './types';
+import { hashPassword } from '../auth/password';
 
 // ─── Profiles ──────────────────────────────────────────────────────────────────
 
@@ -50,6 +54,41 @@ export const SEED_USER_PREFERENCES: UserPreferences[] = [
   },
 ];
 
+// ─── Auth Accounts (demo credentials; not production-grade hashing) ────────────
+
+export const SEED_USER_ACCOUNTS: UserAccount[] = [
+  {
+    id: 'user-account-ananya',
+    email: 'ananya@example.com',
+    passwordHash: hashPassword('password123'),
+    displayName: 'Ananya Sharma',
+    isAdultConfirmed: true,
+    consentToContact: true,
+    createdAt: new Date('2026-01-15T10:00:00.000Z'),
+  },
+];
+
+export const SEED_PROFESSIONAL_ACCOUNTS: ProfessionalAccount[] = [
+  {
+    id: 'pro-account-maya',
+    email: 'maya.rao@manas.demo',
+    passwordHash: hashPassword('clinician123'),
+    displayName: 'Dr. Maya Rao',
+    providerId: 'provider-dr-maya-rao',
+    role: 'clinician',
+    createdAt: new Date('2026-01-10T08:00:00.000Z'),
+  },
+  {
+    id: 'pro-account-vikram',
+    email: 'vikram.singh@manas.demo',
+    passwordHash: hashPassword('clinician123'),
+    displayName: 'Dr. Vikram Singh',
+    providerId: 'provider-dr-vikram-singh',
+    role: 'clinician',
+    createdAt: new Date('2026-01-12T08:00:00.000Z'),
+  },
+];
+
 // ─── Providers (all isFictionalDemo: true) ─────────────────────────────────────
 
 export const SEED_PROVIDERS: Provider[] = [
@@ -62,7 +101,12 @@ export const SEED_PROVIDERS: Provider[] = [
     focusAreas: ['workplace stress', 'anxiety', 'burnout', 'mindfulness'],
     availability: 'Mon–Fri, 9 AM – 5 PM IST',
     sessionType: 'Video + Chat',
-    priceRange: '₹1,500 – ₹2,500 per session',
+    priceRange: '$95 – $125 per session',
+    pricePerSession: 110,
+    currency: 'USD',
+    sessionDurationMinutes: 50,
+    nextAvailable: 'Tomorrow, 10:00 AM IST',
+    credentialsNote: 'Licensed Clinical Psychologist — fictional demo provider',
     bio: 'Dr. Maya Rao is a clinical psychologist specialising in workplace wellbeing and burnout recovery. She uses a blend of CBT and mindfulness-based approaches.',
     isFictionalDemo: true,
   },
@@ -75,7 +119,12 @@ export const SEED_PROVIDERS: Provider[] = [
     focusAreas: ['anxiety', 'depression', 'sleep disorders', 'life transitions'],
     availability: 'Tue–Sat, 10 AM – 7 PM IST',
     sessionType: 'Video',
-    priceRange: '₹1,200 – ₹2,000 per session',
+    priceRange: '$80 – $110 per session',
+    pricePerSession: 95,
+    currency: 'USD',
+    sessionDurationMinutes: 50,
+    nextAvailable: 'Friday, 2:00 PM IST',
+    credentialsNote: 'Licensed Counselling Psychologist — fictional demo provider',
     bio: 'Dr. Vikram Singh is a counselling psychologist with over 10 years of experience helping adults navigate anxiety, sleep issues, and major life transitions.',
     isFictionalDemo: true,
   },
@@ -88,7 +137,12 @@ export const SEED_PROVIDERS: Provider[] = [
     focusAreas: ['stress management', 'mindfulness', 'work-life balance', 'self-compassion'],
     availability: 'Mon–Thu, 6 PM – 9 PM IST; Sat 10 AM – 2 PM IST',
     sessionType: 'Chat + Audio',
-    priceRange: '₹800 – ₹1,500 per session',
+    priceRange: '$60 – $90 per session',
+    pricePerSession: 75,
+    currency: 'USD',
+    sessionDurationMinutes: 45,
+    nextAvailable: 'Saturday, 11:00 AM IST',
+    credentialsNote: 'Certified Wellness Coach — fictional demo provider',
     bio: 'Priya Kapoor is a certified wellness coach who facilitates mindfulness groups and one-to-one stress-management sessions for working professionals.',
     isFictionalDemo: true,
   },
@@ -101,7 +155,12 @@ export const SEED_PROVIDERS: Provider[] = [
     focusAreas: ['trauma', 'PTSD', 'chronic stress', 'somatic therapy'],
     availability: 'Wed–Sun, 11 AM – 6 PM IST',
     sessionType: 'Video',
-    priceRange: '₹2,500 – ₹4,000 per session',
+    priceRange: '$130 – $160 per session',
+    pricePerSession: 145,
+    currency: 'USD',
+    sessionDurationMinutes: 60,
+    nextAvailable: 'Wednesday, 12:30 PM IST',
+    credentialsNote: 'Board-Certified Psychiatrist — fictional demo provider',
     bio: 'Dr. Neha Iyer is a psychiatrist and psychotherapist with expertise in trauma-informed care and somatic experiencing. She offers integrative treatment plans.',
     isFictionalDemo: true,
   },
@@ -235,3 +294,38 @@ export const SEED_HANDOFFS: Handoff[] = [];
 // ─── Consent Records ───────────────────────────────────────────────────────────
 
 export const SEED_CONSENT_RECORDS: ConsentRecord[] = [];
+
+// ─── Symptom Entries ───────────────────────────────────────────────────────────
+
+export const SEED_SYMPTOM_ENTRIES: SymptomEntry[] = [
+  {
+    id: 'symptom-ananya-sleep-001',
+    userId: 'profile-ananya-sharma',
+    text: 'Trouble falling asleep before big work presentations',
+    category: 'sleep',
+    severity: 'moderate',
+    frequency: 'weekly',
+    impact: 'Affects energy and focus the next day',
+    createdAt: new Date('2026-07-25T21:00:00.000Z'),
+  },
+  {
+    id: 'symptom-ananya-sleep-002',
+    userId: 'profile-ananya-sharma',
+    text: 'Waking up at 3am and struggling to get back to sleep',
+    category: 'sleep',
+    severity: 'significant',
+    frequency: 'several_times_a_week',
+    impact: 'Leaves me tired during meetings',
+    createdAt: new Date('2026-07-27T22:00:00.000Z'),
+  },
+  {
+    id: 'symptom-ananya-stress-001',
+    userId: 'profile-ananya-sharma',
+    text: 'Tight shoulders and racing thoughts on deadline days',
+    category: 'work_stress',
+    severity: 'significant',
+    frequency: 'several_times_a_week',
+    impact: 'Makes it hard to unwind after work',
+    createdAt: new Date('2026-07-28T19:30:00.000Z'),
+  },
+];

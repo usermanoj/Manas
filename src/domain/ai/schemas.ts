@@ -30,6 +30,33 @@ export type AIOutput = z.infer<typeof AIOutputSchema>;
  * Structured Check-In Summary — generated after check-in completion.
  * feels_safe is a DIRECT USER RESPONSE, not an AI inference.
  */
+export const SymptomCategorySchema = z.enum([
+  'sleep', 'mood', 'energy', 'focus', 'physical_tension', 'social', 'work_stress', 'other',
+]);
+export type SymptomCategory = z.infer<typeof SymptomCategorySchema>;
+
+export const SymptomSeveritySchema = z.enum(['mild', 'moderate', 'significant', 'severe']);
+export type SymptomSeverity = z.infer<typeof SymptomSeveritySchema>;
+
+export const SymptomFrequencySchema = z.enum([
+  'occasionally', 'weekly', 'several_times_a_week', 'daily', 'constant',
+]);
+export type SymptomFrequency = z.infer<typeof SymptomFrequencySchema>;
+
+export const SymptomEntrySchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  sessionId: z.string().optional(),
+  text: z.string().min(1).max(300),
+  category: SymptomCategorySchema,
+  severity: SymptomSeveritySchema,
+  frequency: SymptomFrequencySchema,
+  impact: z.string().min(1).max(300),
+  createdAt: z.string().datetime().or(z.date()),
+});
+
+export type SymptomEntryDto = z.infer<typeof SymptomEntrySchema>;
+
 export const StructuredCheckInSchema = z.object({
   primary_concern: z.string().min(1).max(200),
   concern_duration: z.enum(['days', 'weeks', 'months', 'over_year']),
@@ -38,6 +65,10 @@ export const StructuredCheckInSchema = z.object({
   support_preference: z.enum(['general_reflection', 'professional_support', 'immediate_resources']),
   feels_safe: z.enum(['yes', 'no', 'prefer_not_to_answer']),
   key_points: z.array(z.string()).max(10),
+  recordedSymptoms: z.array(SymptomEntrySchema).optional(),
+  // Proactive companion v2 metadata
+  primaryArchetype: z.string().optional(),
+  techniquesUsed: z.array(z.string()).optional(),
 });
 
 export type StructuredCheckIn = z.infer<typeof StructuredCheckInSchema>;
@@ -98,6 +129,35 @@ export const PostMessageRequestSchema = z.object({
 });
 export type PostMessageRequest = z.infer<typeof PostMessageRequestSchema>;
 
+export const TechniqueSuggestionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  whenToUse: z.string(),
+  steps: z.array(z.string()),
+  mechanism: z.string(),
+  duration: z.string(),
+  citations: z.array(z.object({
+    source: z.string(),
+    title: z.string().optional(),
+    url: z.string().optional(),
+    year: z.string().optional(),
+    description: z.string().optional(),
+  })),
+});
+export type TechniqueSuggestion = z.infer<typeof TechniqueSuggestionSchema>;
+
+export const InferredSymptomSuggestionSchema = z.object({
+  text: z.string(),
+  category: SymptomCategorySchema,
+  severity: SymptomSeveritySchema,
+  frequency: SymptomFrequencySchema,
+  impact: z.string(),
+  confidence: z.number(),
+  sourcePhrase: z.string(),
+  userReported: z.boolean(),
+});
+export type InferredSymptomSuggestion = z.infer<typeof InferredSymptomSuggestionSchema>;
+
 export const PostMessageResponseSchema = z.object({
   userFacingResponse: z.string(),
   extractedUpdates: z.record(z.string(), z.unknown()).default({}),
@@ -105,6 +165,23 @@ export const PostMessageResponseSchema = z.object({
   modelVersion: z.string(),
   promptVersion: z.string(),
   fallbackUsed: z.boolean(),
+  isComplete: z.boolean().default(false),
+  // Proactive companion v2 fields
+  archetypes: z.array(z.string()).default([]),
+  primaryArchetype: z.string().default('general_wellbeing'),
+  techniques: z.array(TechniqueSuggestionSchema).default([]),
+  followUpQuestions: z.array(z.string()).default([]),
+  inferredSymptoms: z.array(InferredSymptomSuggestionSchema).default([]),
+  safetyFlag: z.boolean().default(false),
+  safetyMessage: z.string().nullable().default(null),
+  crossSessionInsight: z.string().nullable().default(null),
+  citations: z.array(z.object({
+    source: z.string(),
+    title: z.string().optional(),
+    url: z.string().optional(),
+    year: z.string().optional(),
+    description: z.string().optional(),
+  })).default([]),
 });
 export type PostMessageResponse = z.infer<typeof PostMessageResponseSchema>;
 
@@ -113,6 +190,8 @@ export type PostMessageResponse = z.infer<typeof PostMessageResponseSchema>;
  */
 export const CompleteCheckInResponseSchema = z.object({
   draftSummary: StructuredCheckInSchema,
+  aiNarrative: z.string().min(1).max(1200),
+  suggestedKeyPoints: z.array(z.string()).max(10),
   provisionalRouting: z.object({
     routingState: z.enum([
       'GENERAL_WELLBEING',
@@ -134,6 +213,7 @@ export type CompleteCheckInResponse = z.infer<typeof CompleteCheckInResponseSche
  */
 export const ConfirmCheckInRequestSchema = z.object({
   confirmedSummary: StructuredCheckInSchema,
+  originalDraft: StructuredCheckInSchema.optional(),
 });
 export type ConfirmCheckInRequest = z.infer<typeof ConfirmCheckInRequestSchema>;
 

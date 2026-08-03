@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { StructuredCheckInSchema } from '@/domain/ai';
-import { CheckInOrchestrator } from '@/domain/check-in';
-import { createServices } from '@/lib/services';
+import { createServices, createCheckInOrchestrator } from '@/lib/services';
 
 const ConfirmRouteRequestSchema = z.object({
   confirmedSummary: StructuredCheckInSchema,
@@ -27,13 +26,7 @@ export async function POST(
     }
 
     const services = createServices();
-    const orchestrator = new CheckInOrchestrator({
-      modelGateway: services.modelGateway,
-      fallbackGateway: services.fallbackGateway,
-      sessionRepo: services.sessionRepo,
-      safetyAssessmentRepo: services.safetyAssessmentRepo,
-      auditLogger: services.auditLogger,
-    });
+    const orchestrator = createCheckInOrchestrator(services);
 
     const result = await orchestrator.confirmSummary(
       id,
