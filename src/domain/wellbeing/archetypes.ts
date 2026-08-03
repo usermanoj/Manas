@@ -27,7 +27,10 @@ export interface ArchetypeDefinition {
   label: string;
   description: string;
   indicators: string[];
+  /** Internal guidance for how Manas should respond (not shown to users). */
   responseStrategy: string;
+  /** Warm, user-facing validation sentence for this archetype. */
+  validationMessage: string;
   suggestedTechniqueIds: string[];
   followUpQuestions: string[];
   safetyConsiderations: string[];
@@ -44,6 +47,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     ],
     responseStrategy:
       'Validate the overload, help them name what is within vs outside their control, and offer a fast physiological regulation technique plus a prioritization framework.',
+    validationMessage:
+      "It makes sense that you're feeling overloaded when so much is being asked of you.",
     suggestedTechniqueIds: ['box_breathing', '5_4_3_2_1_grounding', 'worry_time', 'values_clarification'],
     followUpQuestions: [
       'What is the main thing pressing on you right now?',
@@ -65,6 +70,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     ],
     responseStrategy:
       'Normalize anxiety as a threat-response, offer grounding to reduce arousal, and introduce cognitive or behavioral tools based on severity.',
+    validationMessage:
+      'Anxiety is a normal threat-response, and there are small ways to soften the intensity when it shows up.',
     suggestedTechniqueIds: ['5_4_3_2_1_grounding', 'box_breathing', 'cognitive_restructuring', 'worry_time', 'urge_surfing'],
     followUpQuestions: [
       'What are you most afraid might happen?',
@@ -84,6 +91,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     ],
     responseStrategy:
       'Respond with warmth and patience; avoid toxic positivity. Offer behavioral activation and values-based action, and assess duration/severity.',
+    validationMessage:
+      'Thank you for trusting me with this. Low moods can feel heavy, and you do not have to push through them alone.',
     suggestedTechniqueIds: ['behavioral_activation', 'self_compassion_break', 'values_clarification', 'thought_record'],
     followUpQuestions: [
       'How long have you been feeling this way?',
@@ -104,6 +113,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     ],
     responseStrategy:
       'Name burnout as a signal, not a personal failing. Focus on recovery, boundaries, and sustainable energy management rather than productivity hacks.',
+    validationMessage:
+      'Burnout is usually a signal that your energy has been outpacing your recovery — it is not a personal failing.',
     suggestedTechniqueIds: ['behavioral_activation', 'values_clarification', 'progressive_muscle_relaxation', 'self_compassion_break'],
     followUpQuestions: [
       'What part of your life is taking the most from you right now?',
@@ -123,6 +134,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     ],
     responseStrategy:
       'Validate the impact of poor sleep, offer CBT-I principles (stimulus control, sleep hygiene, worry time), and avoid recommending sedatives.',
+    validationMessage:
+      'Sleep touches everything else — mood, focus, and energy. Poor sleep deserves attention, not blame.',
     suggestedTechniqueIds: ['sleep_stimulus_control', 'worry_time', 'box_breathing', 'progressive_muscle_relaxation'],
     followUpQuestions: [
       'Is it harder to fall asleep, stay asleep, or wake too early?',
@@ -142,6 +155,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     ],
     responseStrategy:
       'Hold space without rushing toward solutions. Normalize grief as non-linear, offer gentle coping rituals, and suggest connection or professional support.',
+    validationMessage:
+      'Grief does not follow a straight path. There is no rush to feel better, and there is no wrong way to carry a loss.',
     suggestedTechniqueIds: ['self_compassion_break', 'values_clarification', '5_4_3_2_1_grounding', 'behavioral_activation'],
     followUpQuestions: [
       'Who or what have you lost?',
@@ -161,6 +176,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     ],
     responseStrategy:
       'Validate loneliness as a real signal of unmet connection needs. Offer small, structured steps toward connection and self-compassion.',
+    validationMessage:
+      'Loneliness is a real signal that connection needs matter to you, and it is brave to name it.',
     suggestedTechniqueIds: ['values_clarification', 'self_compassion_break', 'behavioral_activation', '5_4_3_2_1_grounding'],
     followUpQuestions: [
       'Is this loneliness more about quantity of people, quality of connection, or both?',
@@ -180,6 +197,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     ],
     responseStrategy:
       'Respond slowly and safely. Offer grounding techniques to restore the window of tolerance. Strongly encourage professional support without being coercive.',
+    validationMessage:
+      'When difficult memories surface, grounding can help bring the present back into focus. You deserve steady support.',
     suggestedTechniqueIds: ['5_4_3_2_1_grounding', 'box_breathing', 'progressive_muscle_relaxation', 'self_compassion_break'],
     followUpQuestions: [
       'Are you safe right now?',
@@ -199,6 +218,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     ],
     responseStrategy:
       'Acknowledge the mind-body link, suggest somatic regulation, and recommend medical evaluation if symptoms are new or severe.',
+    validationMessage:
+      'The body often carries what the mind is processing. Noticing where you hold stress is an important first step.',
     suggestedTechniqueIds: ['progressive_muscle_relaxation', 'box_breathing', '5_4_3_2_1_grounding', 'self_compassion_break'],
     followUpQuestions: [
       'Where in your body do you feel this most?',
@@ -218,6 +239,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     ],
     responseStrategy:
       'Use ACT-style values clarification. Avoid quick-fix answers; help the user identify one small value-aligned action.',
+    validationMessage:
+      'Questions of meaning and direction deserve patience. One small, value-aligned step is often enough to begin.',
     suggestedTechniqueIds: ['values_clarification', 'behavioral_activation', 'self_compassion_break', 'thought_record'],
     followUpQuestions: [
       'What matters to you when life feels hardest?',
@@ -234,6 +257,8 @@ export const CONCERN_ARCHETYPES: Record<ConcernArchetype, ArchetypeDefinition> =
     indicators: [],
     responseStrategy:
       'Celebrate the check-in, offer a brief reflection prompt, and suggest a preventive technique.',
+    validationMessage:
+      'Thanks for checking in with yourself. Small moments of reflection can make a real difference over time.',
     suggestedTechniqueIds: ['box_breathing', 'values_clarification', 'self_compassion_break'],
     followUpQuestions: [
       'What has been going well lately?',

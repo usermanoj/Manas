@@ -214,7 +214,6 @@ export function createSymptomService(services: Services): SymptomService {
  */
 export function createChatbotService(services: Services): ChatbotService {
   const deps: ChatbotServiceDeps = {
-    modelGateway: services.modelGateway,
     auditLogger: services.auditLogger,
   };
   return new ChatbotService(deps);

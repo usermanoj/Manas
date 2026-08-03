@@ -272,33 +272,32 @@ function buildValidation(
   severity: 'mild' | 'moderate' | 'significant' | 'severe',
 ): string {
   const def = getArchetype(primaryArchetype);
-  const severityPhrase =
-    severity === 'severe'
-      ? 'really intense'
-      : severity === 'significant'
-      ? 'significant'
-      : severity === 'moderate'
-      ? 'noticeable'
-      : 'mild but still valid';
-
   const secondary = archetypes.filter((a) => a !== primaryArchetype);
 
-  let validation = `I hear that you're going through something ${severityPhrase}. `;
+  const parts: string[] = [];
 
-  if (primaryArchetype === 'general_wellbeing') {
-    validation += 'Thanks for checking in with yourself. ';
+  // Open with a warm acknowledgment that matches severity without being clinical.
+  if (severity === 'severe') {
+    parts.push('I can hear how much distress you are carrying right now.');
+  } else if (severity === 'significant') {
+    parts.push('Thank you for sharing that — it sounds like this is really weighing on you.');
+  } else if (severity === 'moderate') {
+    parts.push('Thank you for sharing that — it sounds like a lot to hold.');
   } else {
-    validation += `${def.responseStrategy} `;
+    parts.push('Thank you for checking in — every feeling is worth paying attention to.');
   }
+
+  // Archetype-specific validation sentence (user-facing, never instructions).
+  parts.push(def.validationMessage);
 
   if (secondary.length > 0) {
     const labels = secondary.map((a) => getArchetype(a).label.toLowerCase());
-    validation += `I also notice some elements of ${labels.join(' and ')}. `;
+    parts.push(`I also notice some elements of ${labels.join(' and ')}.`);
   }
 
-  validation += "You don't have to figure this all out right now — let's take it one step at a time.";
+  parts.push("You don't have to figure this all out right now — let's take it one step at a time.");
 
-  return validation.trim();
+  return parts.join(' ').trim();
 }
 
 function buildFollowUpQuestions(

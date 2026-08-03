@@ -129,7 +129,7 @@ export { SymptomService } from './symptoms';
 export type { SymptomServiceDeps, RecordSymptomInput } from './symptoms';
 
 // ─── Chatbot ───────────────────────────────────────────────────────────────────
-export { ChatbotService, ChatbotResponseSchema } from './chatbot';
+export { ChatbotService } from './chatbot';
 export type { ChatbotServiceDeps, ChatMessage, ChatbotResponse } from './chatbot';
 
 // ─── Safety ────────────────────────────────────────────────────────────────────

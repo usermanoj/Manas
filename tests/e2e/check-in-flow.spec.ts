@@ -46,7 +46,9 @@ test.describe('Check-in E2E Flow', () => {
     // -----------------------------------------------------------------------
     const aiResponse = page.getByTestId('ai-response');
     await expect(aiResponse).toBeVisible({ timeout: 15_000 });
-    await expect(aiResponse).not.toBeEmpty();
+
+    // Wait for the loading indicator to disappear before sending the next message.
+    await expect(page.getByTestId('ai-response-loading')).toHaveCount(0, { timeout: 15_000 });
 
     // -----------------------------------------------------------------------
     // 6. Answer a follow-up question to complete structured fields

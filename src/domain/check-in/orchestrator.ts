@@ -298,10 +298,6 @@ function buildUserFacingResponse(
 
   parts.push(engineOutput.validation);
 
-  if (engineOutput.crossSessionInsight) {
-    parts.push(engineOutput.crossSessionInsight);
-  }
-
   if (!engineOutput.safetyFlag && engineOutput.techniques.length > 0) {
     const technique = engineOutput.techniques[0];
     parts.push(

@@ -50,6 +50,9 @@ test.describe('Day 4: Full Demo Flow', () => {
     const aiResponse = page.getByTestId('ai-response');
     await expect(aiResponse).toBeVisible({ timeout: 15_000 });
 
+    // Wait for the loading indicator to disappear before sending the next message.
+    await expect(page.getByTestId('ai-response-loading')).toHaveCount(0, { timeout: 15_000 });
+
     // 4. Answer follow-up question with remaining structured fields
     await chatInput.fill('It has been going on for a few weeks. My sleep is mildly affected, daily routine has mild impact, and I would like professional support. I feel safe.');
     await chatSendBtn.click();
@@ -281,6 +284,6 @@ test.describe('Day 4: Full Demo Flow', () => {
     await page.goto('/privacy');
     await expect(page.getByRole('heading', { name: /privacy/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('text=Audit Timeline')).toBeVisible();
-    await expect(page.locator('text=Care plan')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('text=Care plan revision created')).toBeVisible({ timeout: 10_000 });
   });
 });

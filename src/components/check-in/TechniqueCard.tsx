@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { BRAND } from '@/lib/config/brand';
 import type { TechniqueSuggestion } from '@/domain/ai';
 
 interface TechniqueCardProps {
@@ -79,9 +78,6 @@ export function TechniqueCard({ technique }: TechniqueCardProps): React.ReactNod
         </div>
       )}
 
-      <p className="mt-3 text-xs text-text-muted">
-        {BRAND.prototypeLabel}
-      </p>
     </div>
   );
 }
