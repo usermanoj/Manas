@@ -10,6 +10,8 @@ import type {
   CarePlanVersion,
   Provider,
   Profile,
+  ContentModule,
+  ContentModuleVersion,
 } from '@/domain/repositories';
 import {
   SEED_PROFILES,
@@ -18,6 +20,8 @@ import {
   SEED_CONSENT_RECORDS,
   SEED_CARE_PLANS,
   SEED_CARE_PLAN_VERSIONS,
+  SEED_CONTENT_MODULES,
+  SEED_CONTENT_MODULE_VERSIONS,
 } from '@/domain/repositories';
 import { InMemoryAuditLogger } from '@/domain/audit';
 import { HandoffOrchestrator } from '@/domain/handoff';
@@ -25,6 +29,8 @@ import type { HandoffOrchestratorDeps } from '@/domain/handoff';
 import { InMemoryUnitOfWork } from '@/domain/handoff';
 import { CarePlanOrchestrator } from '@/domain/care-plan';
 import type { CarePlanOrchestratorDeps } from '@/domain/care-plan';
+import { ContentModuleOrchestrator } from '@/domain/content';
+import type { ContentModuleOrchestratorDeps } from '@/domain/content';
 import { env } from '@/lib/config/env';
 
 /**
@@ -45,6 +51,8 @@ export interface Services {
   carePlanVersionRepo: InMemoryRepository<CarePlanVersion>;
   providerRepo: InMemoryRepository<Provider>;
   profileRepo: InMemoryRepository<Profile>;
+  contentModuleRepo: InMemoryRepository<ContentModule>;
+  contentModuleVersionRepo: InMemoryRepository<ContentModuleVersion>;
   unitOfWorkFactory: () => InMemoryUnitOfWork;
 }
 
@@ -77,6 +85,8 @@ const carePlanRepo = new InMemoryRepository<CarePlan>();
 const carePlanVersionRepo = new InMemoryRepository<CarePlanVersion>();
 const providerRepo = new InMemoryRepository<Provider>();
 const profileRepo = new InMemoryRepository<Profile>();
+const contentModuleRepo = new InMemoryRepository<ContentModule>();
+const contentModuleVersionRepo = new InMemoryRepository<ContentModuleVersion>();
 
 // Seed demo data into singleton repositories (synchronous via .seed())
 profileRepo.seed(SEED_PROFILES);
@@ -85,6 +95,8 @@ handoffRepo.seed(SEED_HANDOFFS);
 consentRecordRepo.seed(SEED_CONSENT_RECORDS);
 carePlanRepo.seed(SEED_CARE_PLANS);
 carePlanVersionRepo.seed(SEED_CARE_PLAN_VERSIONS);
+contentModuleRepo.seed(SEED_CONTENT_MODULES);
+contentModuleVersionRepo.seed(SEED_CONTENT_MODULE_VERSIONS);
 
 /**
  * Create services for the current request.
@@ -106,6 +118,8 @@ export function createServices(): Services {
     carePlanVersionRepo,
     providerRepo,
     profileRepo,
+    contentModuleRepo,
+    contentModuleVersionRepo,
     unitOfWorkFactory: () => new InMemoryUnitOfWork(),
   };
 }
@@ -135,4 +149,16 @@ export function createCarePlanOrchestrator(services: Services): CarePlanOrchestr
     auditLogger: services.auditLogger,
   };
   return new CarePlanOrchestrator(deps);
+}
+
+/**
+ * Create a ContentModuleOrchestrator wired to the given services.
+ */
+export function createContentModuleOrchestrator(services: Services): ContentModuleOrchestrator {
+  const deps: ContentModuleOrchestratorDeps = {
+    contentModuleRepo: services.contentModuleRepo,
+    contentModuleVersionRepo: services.contentModuleVersionRepo,
+    auditLogger: services.auditLogger,
+  };
+  return new ContentModuleOrchestrator(deps);
 }

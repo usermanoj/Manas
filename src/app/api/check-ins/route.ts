@@ -3,6 +3,41 @@ import { CreateCheckInRequestSchema } from '@/domain/ai';
 import { CheckInOrchestrator } from '@/domain/check-in';
 import { createServices } from '@/lib/services';
 
+/**
+ * GET /api/check-ins
+ * Returns all check-in sessions for the demo user.
+ */
+export async function GET(): Promise<NextResponse> {
+  try {
+    const services = createServices();
+    const sessions = await services.sessionRepo.findAll();
+
+    return NextResponse.json({
+      sessions: sessions.map((s) => ({
+        id: s.id,
+        userId: s.userId,
+        mode: s.mode,
+        language: s.language,
+        status: s.status,
+        modelVersion: s.modelVersion,
+        promptVersion: s.promptVersion,
+        startedAt: s.startedAt instanceof Date
+          ? s.startedAt.toISOString()
+          : s.startedAt,
+        completedAt: s.completedAt instanceof Date
+          ? s.completedAt.toISOString()
+          : s.completedAt ?? null,
+        structuredSummary: s.structuredSummary ?? null,
+      })),
+    });
+  } catch {
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json();

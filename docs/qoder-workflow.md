@@ -50,3 +50,84 @@
 - Barrel exports from domain/index.ts
 - Zod validation on all API request/response payloads
 - Fresh service container per request (stateless)
+
+## Day 5: Acceptance + Audit + Privacy + Content Compiler
+
+### Implementation Order
+1. Content domain orchestrator — extractDraftFromText, createDraft, submitForReview
+2. Content module repositories — InMemoryRepository<ContentModule> + ContentModuleVersion, seeded
+3. Content compile API — POST /api/content/compile with Zod validation
+4. Content compiler UI — textarea input, draft display, submit for review
+5. Privacy DELETE endpoint — DELETE /api/privacy/check-ins/{id}
+6. Privacy page expansion — consent status, summary list, delete buttons
+7. Audit event types — CONTENT_DRAFT_CREATED, CONTENT_SUBMITTED_FOR_REVIEW, SESSION_DELETED
+8. Integration tests — content compiler flow, privacy deletion
+9. Documentation — README, qoder-workflow, demo script, evaluation dataset, safety review
+
+### Key Decisions
+- **Deterministic text parsing for content compiler**: simple heading-based text splitting rather than AI extraction. Avoids non-determinism and Qwen API dependency. Sufficient for P0 demo.
+- **Privacy page three-section layout**: Audit timeline (existing) + Consent status + Structured summaries with delete. Consent display uses audit events (HANDOFF_CONSENT_GRANTED) rather than separate consent API.
+- **Session deletion cascades**: DELETE removes session + associated safety assessments. Handoff summaries remain separate. Audit event logged for compliance.
+- **Content-review P0 scope**: DRAFT and PENDING_CLINICAL_REVIEW only. Full lifecycle (APPROVED, CHANGES_REQUESTED, SUSPENDED, RETIRED) deferred to blueprint.
+
+## Day 3: Module + Professionals + Handoff
+
+### Implementation Order
+1. Content module storage — InMemoryRepository<ContentModule> with seed data
+2. Providers API — GET /api/providers endpoint
+3. Handoff API routes — POST, PATCH, GET handlers
+4. Handoff state machine — DRAFT → USER_REVIEW → CONSENTED → SENT
+5. Module display page — /module/pause-reflect with prototype label
+6. Professionals directory page — /professionals with fictional demo badges
+7. Handoff editor page — /handoff with consent flow
+
+### Key Decisions
+- **Module status always DRAFT**: Pause and Reflect module is prototype content, never represented as clinically approved.
+- **Fictional provider badges**: All professional profiles display "Fictional Provider" badge prominently.
+- **Handoff preview hash**: SHA-256 hash of handoff summary used for consent binding. Prevents tampering between edit and send.
+
+## Day 1: Scaffold + Skeleton
+
+### Implementation Order
+1. Next.js project scaffold — App Router, TypeScript strict, Tailwind
+2. Brand config module — colors, typography, spacing tokens
+3. State machine definitions — 4 machines with transition validators
+4. Mock ModelGateway — deterministic structured JSON matching AIOutputSchema
+5. In-memory repositories — Map-backed storage implementing repository interface
+6. 12-route navigation skeleton — empty pages with working routing
+7. Landing page — disclosure + language/mode selection
+8. Tailwind theme — calm, warm, accessible design
+9. State machine unit tests — all 4 machines covered
+
+### Key Decisions
+- **In-memory singleton repositories**: shared across requests in same process, seeded on startup. Future Supabase adapter will replace with same interface.
+- **ModelGateway interface abstraction**: domain layer depends on interface, not implementation. Mock and Qwen providers implement same contract.
+- **Stateless API design**: client preserves check-in answers in sessionStorage; APIs receive full structuredAnswers per call.
+
+## Qoder Workflow Patterns
+
+### Task Decomposition
+- 15 P0 deliverables mapped to 5 phases (content compiler, privacy, verification, documentation, deployment)
+- Independent features implemented in parallel by separate agents
+- Each agent owns a complete vertical slice (domain → API → UI → tests)
+
+### Worktree Isolation
+- Each agent works on isolated file sets to prevent conflicts
+- Content compiler: `src/domain/content/`, `src/app/api/content/`, `src/app/clinician/content/`, `tests/unit/content-compiler.test.ts`
+- Privacy controls: `src/app/api/privacy/`, `src/app/(user)/privacy/`, `tests/integration/privacy-deletion.test.ts`
+- Shared files (`services.ts`, `event-types.ts`) updated by one agent at a time
+
+### Spec-First Development
+- P0 Implementation Spec approved before implementation began
+- Daily standup against acceptance criteria (30 items)
+- Scope creep prevented by explicit P0/P1/P2 boundaries in AGENTS.md
+- All changes verified against AGENTS.md engineering standards
+
+### Content Compiler Reusable Workflow
+1. Read spec → understand API contract (§8) and state machine (§9.2)
+2. Implement domain orchestrator first (pure TS, no framework deps)
+3. Wire into service container (dependency injection)
+4. Create API route with Zod validation
+5. Build UI as client component following existing patterns
+6. Write unit tests alongside implementation (not deferred)
+7. Verify with `tsc --noEmit` before moving on
