@@ -25,3 +25,6 @@ playwright-report/
 *.patch
 .vercel
 .env*
+
+# temporary verification screenshots
+landing-*.png
