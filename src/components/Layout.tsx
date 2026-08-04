@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { BRAND } from '@/lib/config/brand';
 import { DisclosureBanner } from '@/components/DisclosureBanner';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { ManusCompanion } from '@/components/chatbot/ManusCompanion';
+import { ManasCompanion } from '@/components/chatbot/ManasCompanion';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -75,7 +75,7 @@ export function Layout({ children }: LayoutProps): React.ReactNode {
       </header>
       <DisclosureBanner />
       <main className="flex-1">{children}</main>
-      <ManusCompanion />
+      <ManasCompanion />
       <footer className="bg-surface border-t border-text/10 mt-auto">
         <div className={`${BRAND.spacing.pageMaxWidth} mx-auto px-4 py-4 text-center`}>
           <p className="text-sm text-text-muted">

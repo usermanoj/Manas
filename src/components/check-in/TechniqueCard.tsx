@@ -11,13 +11,13 @@ export function TechniqueCard({ technique }: TechniqueCardProps): React.ReactNod
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="bg-surface rounded-xl border border-primary/20 p-4 shadow-sm">
+    <div className="bg-surface rounded-xl border border-primary/20 p-3 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h4 className="font-semibold text-text">{technique.name}</h4>
-          <p className="text-sm text-text-muted mt-1">{technique.whenToUse}</p>
+          <h4 className="text-sm font-semibold text-text">{technique.name}</h4>
+          <p className="text-xs text-text-muted mt-0.5">{technique.whenToUse}</p>
         </div>
-        <span className="shrink-0 text-xs font-medium text-primary bg-primary/10 px-2 py-1 rounded-full">
+        <span className="shrink-0 text-[10px] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
           {technique.duration}
         </span>
       </div>
@@ -25,7 +25,7 @@ export function TechniqueCard({ technique }: TechniqueCardProps): React.ReactNod
       <button
         type="button"
         onClick={() => setExpanded((prev) => !prev)}
-        className="mt-3 text-sm font-medium text-primary hover:text-primary-light focus:outline-none"
+        className="mt-2 text-xs font-medium text-primary hover:text-primary-light focus:outline-none"
         aria-expanded={expanded}
       >
         {expanded ? 'Hide steps' : 'Show steps'}
@@ -44,7 +44,7 @@ export function TechniqueCard({ technique }: TechniqueCardProps): React.ReactNod
             ))}
           </ol>
 
-          <p className="text-sm text-text-muted bg-secondary/10 rounded-lg p-3">
+          <p className="text-xs text-text-muted bg-secondary/10 rounded-lg p-2.5">
             <span className="font-medium text-text">Why it works:</span> {technique.mechanism}
           </p>
 

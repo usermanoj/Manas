@@ -6,12 +6,19 @@ interface QuickReplyProps {
   disabled?: boolean;
 }
 
+/**
+ * "You could say" prompts — shown beneath the companion message to help the
+ * user articulate their experience. These are input shortcuts, NOT AI replies.
+ * Clicking one pre-fills the chat input rather than sending immediately.
+ */
 export function QuickReply({ options, onSelect, disabled }: QuickReplyProps): React.ReactNode {
   if (options.length === 0) return null;
 
   return (
-    <div role="list" aria-label="Suggested replies">
-      <p className="text-xs text-text-muted mb-2">Suggested replies</p>
+    <div>
+      <p className="text-[10px] font-medium text-text-muted uppercase tracking-wider mb-2">
+        You could say…
+      </p>
       <div className="flex flex-wrap gap-2">
         {options.map((option) => (
           <button
@@ -19,8 +26,8 @@ export function QuickReply({ options, onSelect, disabled }: QuickReplyProps): Re
             type="button"
             onClick={() => onSelect(option)}
             disabled={disabled}
-            className="px-4 py-2 text-sm font-medium text-primary bg-primary/10 border border-primary/20 rounded-full hover:bg-primary/20 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            role="listitem"
+            title="Click to use this as your reply"
+            className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/8 border border-primary/20 rounded-full hover:bg-primary/15 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {option}
           </button>

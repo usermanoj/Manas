@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Layout } from '@/components/Layout';
@@ -12,6 +12,7 @@ import type {
   StructuredCheckIn,
   CompleteCheckInResponse,
   ConfirmCheckInResponse,
+  TechniqueSuggestion,
 } from '@/domain/ai/schemas';
 import type { RoutingState } from '@/domain/safety/types';
 
@@ -129,35 +130,6 @@ function ErrorMessage({ message, onRetry, retrying }: ErrorMessageProps): React.
   );
 }
 
-interface RadioGroupProps {
-  name: string;
-  value: string;
-  options: ReadonlyArray<{ value: string; label: string }>;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}
-
-function RadioGroup({ name, value, options, onChange, disabled }: RadioGroupProps): React.ReactNode {
-  return (
-    <div className="flex flex-col gap-2">
-      {options.map((opt) => (
-        <label key={opt.value} className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="radio"
-            name={name}
-            value={opt.value}
-            checked={value === opt.value}
-            onChange={() => onChange(opt.value)}
-            disabled={disabled}
-            className="w-4 h-4 text-primary"
-          />
-          <span className="text-text">{opt.label}</span>
-        </label>
-      ))}
-    </div>
-  );
-}
-
 interface FieldCardProps {
   label: string;
   testId: string;
@@ -171,6 +143,197 @@ function FieldCard({ label, testId, children, note }: FieldCardProps): React.Rea
       <label className="block text-sm font-semibold text-text mb-3">{label}</label>
       {children}
       {note && <p className="mt-2 text-xs text-text-muted italic">{note}</p>}
+    </div>
+  );
+}
+
+interface SectionHeaderProps {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+}
+
+function SectionHeader({ icon, title, subtitle }: SectionHeaderProps): React.ReactNode {
+  return (
+    <div className="flex items-start gap-3 mb-4">
+      <span className="mt-0.5 shrink-0">{icon}</span>
+      <div>
+        <h2 className="text-base font-semibold text-text">{title}</h2>
+        {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+interface PillRadioGroupProps {
+  name: string;
+  value: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+/** Premium segmented pill selector. Each option is a real radio input wrapped
+ * in its label so accessible-name lookups (and keyboard use) keep working. */
+function PillRadioGroup({ name, value, options, onChange, disabled }: PillRadioGroupProps): React.ReactNode {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt) => {
+        const selected = value === opt.value;
+        return (
+          <label
+            key={opt.value}
+            className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 cursor-pointer transition-colors select-none ${
+              selected
+                ? 'border-primary bg-primary/10'
+                : 'border-text/20 bg-surface hover:border-primary/40'
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <input
+              type="radio"
+              name={name}
+              value={opt.value}
+              checked={selected}
+              onChange={() => onChange(opt.value)}
+              disabled={disabled}
+              className="w-4 h-4 appearance-none rounded-full border-2 transition-colors cursor-pointer shrink-0 border-text/40 checked:border-primary checked:bg-primary"
+            />
+            <span className={`text-sm ${selected ? 'text-primary font-medium' : 'text-text'}`}>{opt.label}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+interface TechniqueCardProps {
+  technique: TechniqueSuggestion;
+  defaultOpen?: boolean;
+}
+
+/** Expandable technique card — click the name to reveal steps, mechanism, and
+ * sources, mirroring the in-chat technique experience. */
+function TechniqueCard({ technique, defaultOpen = false }: TechniqueCardProps): React.ReactNode {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border border-text/10 rounded-xl overflow-hidden bg-surface">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-primary/5 transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.674M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <span className="text-sm font-medium text-text">{technique.name}</span>
+        </span>
+        <svg
+          className={`w-4 h-4 text-text-muted shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          {technique.whenToUse && (
+            <p className="text-sm text-text-muted italic">{technique.whenToUse}</p>
+          )}
+          {technique.steps.length > 0 && (
+            <ol className="space-y-1.5">
+              {technique.steps.map((step, i) => (
+                <li key={i} className="flex gap-2 text-sm text-text">
+                  <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center shrink-0">
+                    {i + 1}
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          {technique.mechanism && (
+            <p className="text-xs text-text-muted">{technique.mechanism}</p>
+          )}
+          {technique.duration && (
+            <p className="text-xs text-text-muted">Duration: {technique.duration}</p>
+          )}
+          {technique.citations.length > 0 && (
+            <div className="pt-2 border-t border-text/10 space-y-1">
+              <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Sources</p>
+              {technique.citations.map((c, idx) => (
+                <p key={idx} className="text-xs text-text-muted">
+                  {c.title ?? c.source}
+                  {c.year ? ` — ${c.source} (${c.year})` : ` — ${c.source}`}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface CitationEntry {
+  source: string;
+  title?: string;
+  url?: string;
+  year?: string;
+  description?: string;
+}
+
+/** Collapsible "Sources" list — collapsed by default, tap to expand. */
+function CollapsibleSources({ citations }: { citations: CitationEntry[] }): React.ReactNode {
+  const [open, setOpen] = useState(false);
+  if (citations.length === 0) return null;
+  return (
+    <div className="pt-4 border-t border-text/10">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 text-left py-1 group"
+      >
+        <span className="text-xs font-semibold text-text-muted uppercase tracking-wide group-hover:text-text transition-colors">
+          Sources ({citations.length})
+        </span>
+        <svg
+          className={`w-4 h-4 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <ul className="space-y-3 mt-3">
+          {citations.map((citation, idx) => (
+            <li key={idx} className="text-sm">
+              <p className="font-medium text-text">{citation.title ?? citation.source}</p>
+              {citation.description && <p className="text-text-muted">{citation.description}</p>}
+              {citation.url ? (
+                <a
+                  href={citation.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline text-xs"
+                >
+                  {citation.source}{citation.year ? ` (${citation.year})` : ''}
+                </a>
+              ) : (
+                <p className="text-text-muted text-xs">{citation.source}{citation.year ? ` (${citation.year})` : ''}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -196,7 +359,6 @@ function SummaryPageContent(): React.ReactNode {
 
   // AI narrative
   const [aiNarrative, setAiNarrative] = useState<string>('');
-  const [suggestedKeyPoints, setSuggestedKeyPoints] = useState<string[]>([]);
   const [regenerating, setRegenerating] = useState(false);
 
   // Editable form state
@@ -225,7 +387,7 @@ function SummaryPageContent(): React.ReactNode {
   // Proactive companion context (citations, cross-session insight, techniques)
   interface CompanionContext {
     primaryArchetype: string;
-    techniques: { id: string; name: string }[];
+    techniques: TechniqueSuggestion[];
     citations: Array<{ source: string; title?: string; url?: string; year?: string; description?: string }>;
     crossSessionInsight: string | null;
   }
@@ -268,7 +430,6 @@ function SummaryPageContent(): React.ReactNode {
     });
     setProvisionalRouting(data.provisionalRouting);
     setAiNarrative(data.aiNarrative);
-    setSuggestedKeyPoints(data.suggestedKeyPoints);
     setDevInfo((prev) => ({
       ...prev,
       modelVersion: data.modelVersion,
@@ -331,7 +492,6 @@ function SummaryPageContent(): React.ReactNode {
         setFormData(offlineSummary);
         setProvisionalRouting(null);
         setAiNarrative(generateOfflineNarrative(offlineSummary));
-        setSuggestedKeyPoints(generateOfflineKeyPoints(offlineSummary));
         setDevInfo((prev) => ({ ...prev, modelVersion: 'offline', promptVersion: 'offline', policyVersion: 'offline' }));
         setLoading(false);
         return;
@@ -364,7 +524,6 @@ function SummaryPageContent(): React.ReactNode {
         setDraftSummary(summary);
         setFormData(summary);
         setAiNarrative(generateOfflineNarrative(summary));
-        setSuggestedKeyPoints(generateOfflineKeyPoints(summary));
         setDevInfo((prev) => ({
           ...prev,
           modelVersion: session.modelVersion,
@@ -471,21 +630,22 @@ function SummaryPageContent(): React.ReactNode {
     }
   };
 
-  // Regenerate AI narrative
+  // Regenerate AI narrative — each click requests a fresh paraphrase variant.
+  const regenVariantRef = useRef(0);
   const handleRegenerate = async (): Promise<void> => {
     if (!sessionId || !formData) return;
     setRegenerating(true);
     setError(null);
+    regenVariantRef.current = (regenVariantRef.current % 3) + 1;
     try {
       const res = await fetch(`/api/check-ins/${sessionId}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ structuredAnswers: formData }),
+        body: JSON.stringify({ structuredAnswers: formData, variant: regenVariantRef.current }),
       });
       if (!res.ok) throw new Error('Failed to regenerate summary.');
       const data: CompleteCheckInResponse = await res.json();
       setAiNarrative(data.aiNarrative);
-      setSuggestedKeyPoints(data.suggestedKeyPoints);
       setProvisionalRouting(data.provisionalRouting);
       setDevInfo((prev) => ({
         ...prev,
@@ -498,14 +658,6 @@ function SummaryPageContent(): React.ReactNode {
     } finally {
       setRegenerating(false);
     }
-  };
-
-  const handleSoundsRight = (): void => {
-    if (!formData) return;
-    const newKeyPoints = suggestedKeyPoints.length > 0
-      ? suggestedKeyPoints.slice(0, 10)
-      : formData.key_points;
-    setFormData({ ...formData, key_points: newKeyPoints });
   };
 
   // Symptom handlers
@@ -619,34 +771,17 @@ function SummaryPageContent(): React.ReactNode {
             <p className="text-text-muted mb-8">Review and edit your answers before confirming.</p>
 
             {/* AI Narrative */}
-            <div className="bg-primary/5 border border-primary/20 rounded-xl p-6 mb-6">
-              <div className="flex items-start gap-3 mb-3">
-                <svg className="w-5 h-5 text-primary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                <h2 className="text-base font-semibold text-text">Manus reflected summary</h2>
-              </div>
-              <p className="text-text leading-relaxed mb-4">{aiNarrative || generateOfflineNarrative(formData)}</p>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => void handleRegenerate()}
-                  disabled={regenerating || isOfflineSession}
-                  className="text-sm px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {regenerating ? 'Regenerating…' : 'Regenerate summary'}
-                </button>
-                <button
-                  onClick={handleSoundsRight}
-                  className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-light transition-colors"
-                >
-                  Sounds right
-                </button>
-              </div>
-              {isOfflineSession && (
-                <p className="text-xs text-text-muted mt-3">
-                  Offline mode: AI regeneration requires a connection.
-                </p>
-              )}
+            <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 rounded-2xl p-6 mb-6">
+              <SectionHeader
+                icon={
+                  <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                }
+                title="Manas reflected summary"
+                subtitle="A reflection of what you shared — not a diagnosis or assessment."
+              />
+              <p className="text-text leading-relaxed">{aiNarrative || generateOfflineNarrative(formData)}</p>
             </div>
 
             {/* Cross-session insight */}
@@ -662,141 +797,142 @@ function SummaryPageContent(): React.ReactNode {
               </div>
             )}
 
-            {/* Sources / citations */}
-            {companionContext && companionContext.citations.length > 0 && (
-              <div data-testid="sources-panel" className="bg-surface border border-text/10 rounded-xl p-6 mb-6">
-                <div className="flex items-start gap-3 mb-3">
-                  <svg className="w-5 h-5 text-primary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                  <h2 className="text-base font-semibold text-text">Sources and techniques</h2>
-                </div>
+            {/* Proposed techniques (with sources) */}
+            {companionContext && (companionContext.techniques.length > 0 || companionContext.citations.length > 0) && (
+              <div data-testid="sources-panel" className="bg-surface border border-text/10 rounded-2xl p-6 mb-6">
+                <SectionHeader
+                  icon={
+                    <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.674M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                  }
+                  title="Proposed Techniques"
+                  subtitle="Tap a technique to expand its steps. These were suggested across your conversation."
+                />
                 {companionContext.techniques.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-sm text-text-muted mb-2">Techniques mentioned:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {companionContext.techniques.map((t) => (
-                        <span key={t.id} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                          {t.name}
-                        </span>
-                      ))}
-                    </div>
+                  <div className="space-y-3 mb-5">
+                    {companionContext.techniques.map((t) => (
+                      <TechniqueCard key={t.id} technique={t} />
+                    ))}
                   </div>
                 )}
-                <ul className="space-y-3">
-                  {companionContext.citations.map((citation, idx) => (
-                    <li key={idx} className="text-sm">
-                      <p className="font-medium text-text">{citation.title ?? citation.source}</p>
-                      {citation.description && <p className="text-text-muted">{citation.description}</p>}
-                      {citation.url ? (
-                        <a
-                          href={citation.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline text-xs"
-                        >
-                          {citation.source}{citation.year ? ` (${citation.year})` : ''}
-                        </a>
-                      ) : (
-                        <p className="text-text-muted text-xs">{citation.source}{citation.year ? ` (${citation.year})` : ''}</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                <CollapsibleSources citations={companionContext.citations} />
               </div>
             )}
 
             <div className="space-y-6">
-              {/* Primary concern */}
-              <FieldCard label="Primary concern" testId="field-primary_concern">
-                <input
-                  type="text"
-                  value={formData.primary_concern}
-                  onChange={(e) => updateField('primary_concern', e.target.value)}
-                  className="w-full border border-text/20 rounded-lg p-2 focus:ring-2 focus:ring-primary outline-none"
+              {/* What you shared */}
+              <div className="bg-surface rounded-2xl shadow-sm p-6">
+                <SectionHeader
+                  icon={
+                    <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  }
+                  title="What you shared"
+                  subtitle="These key points come from your own words. Edit or remove any."
                 />
-              </FieldCard>
-
-              {/* Duration */}
-              <FieldCard label="Duration" testId="field-concern_duration">
-                <RadioGroup
-                  name="concern_duration"
-                  value={formData.concern_duration}
-                  options={DURATION_OPTIONS}
-                  onChange={(v) => updateField('concern_duration', v as StructuredCheckIn['concern_duration'])}
-                />
-              </FieldCard>
-
-              {/* Sleep impact */}
-              <FieldCard label="Sleep impact" testId="field-sleep_impact">
-                <RadioGroup
-                  name="sleep_impact"
-                  value={formData.sleep_impact}
-                  options={SLEEP_IMPACT_OPTIONS}
-                  onChange={(v) => updateField('sleep_impact', v as StructuredCheckIn['sleep_impact'])}
-                />
-              </FieldCard>
-
-              {/* Daily functioning impact */}
-              <FieldCard label="Daily functioning impact" testId="field-daily_functioning_impact">
-                <RadioGroup
-                  name="daily_functioning_impact"
-                  value={formData.daily_functioning_impact}
-                  options={FUNCTIONING_OPTIONS}
-                  onChange={(v) => updateField('daily_functioning_impact', v as StructuredCheckIn['daily_functioning_impact'])}
-                />
-              </FieldCard>
-
-              {/* Support preference */}
-              <FieldCard label="Support preference" testId="field-support_preference">
-                <RadioGroup
-                  name="support_preference"
-                  value={formData.support_preference}
-                  options={SUPPORT_OPTIONS}
-                  onChange={(v) => updateField('support_preference', v as StructuredCheckIn['support_preference'])}
-                />
-              </FieldCard>
-
-              {/* Safety response */}
-              <FieldCard label="Safety response" testId="field-feels_safe" note="This is your direct response, not an AI assessment.">
-                <RadioGroup
-                  name="feels_safe"
-                  value={formData.feels_safe}
-                  options={SAFETY_OPTIONS}
-                  onChange={(v) => updateField('feels_safe', v as StructuredCheckIn['feels_safe'])}
-                />
-              </FieldCard>
-
-              {/* Key points */}
-              <FieldCard label="Key points" testId="field-key_points">
-                <div className="space-y-2">
-                  {formData.key_points.map((point, i) => (
-                    <div key={i} className="flex gap-2">
-                      <input
-                        type="text"
-                        value={point}
-                        onChange={(e) => updateKeyPoint(i, e.target.value)}
-                        className="flex-1 border border-text/20 rounded-lg p-2 focus:ring-2 focus:ring-primary outline-none"
-                      />
-                      <button
-                        onClick={() => removeKeyPoint(i)}
-                        className="text-error hover:text-error/80 px-2 text-sm font-medium"
-                        aria-label={`Remove key point ${i + 1}`}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                  {formData.key_points.length < 10 && (
-                    <button
-                      onClick={addKeyPoint}
-                      className="text-primary hover:text-primary-light text-sm font-medium mt-2"
-                    >
-                      + Add key point
-                    </button>
-                  )}
+                <div data-testid="field-primary_concern" className="mb-5">
+                  <span className="block text-sm font-medium text-text mb-2">Primary concern</span>
+                  <input
+                    type="text"
+                    value={formData.primary_concern}
+                    onChange={(e) => updateField('primary_concern', e.target.value)}
+                    className="w-full border border-text/20 rounded-lg p-2.5 focus:ring-2 focus:ring-primary outline-none bg-background text-text"
+                  />
                 </div>
-              </FieldCard>
+                <div data-testid="field-key_points">
+                  <span className="block text-sm font-medium text-text mb-2">Key points</span>
+                  <div className="space-y-2">
+                    {formData.key_points.map((point, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <input
+                          type="text"
+                          value={point}
+                          onChange={(e) => updateKeyPoint(i, e.target.value)}
+                          className="flex-1 border border-text/20 rounded-lg p-2.5 focus:ring-2 focus:ring-primary outline-none bg-background text-text"
+                        />
+                        <button
+                          onClick={() => removeKeyPoint(i)}
+                          className="text-error hover:text-error/80 px-2 text-sm font-medium shrink-0"
+                          aria-label={`Remove key point ${i + 1}`}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    {formData.key_points.length < 10 && (
+                      <button
+                        onClick={addKeyPoint}
+                        className="text-primary hover:text-primary-light text-sm font-medium mt-1"
+                      >
+                        + Add key point
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Your responses */}
+              <div className="bg-surface rounded-2xl shadow-sm p-6">
+                <SectionHeader
+                  icon={
+                    <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                    </svg>
+                  }
+                  title="Your responses"
+                  subtitle="Tap to adjust — these shape how Manas suggests next steps."
+                />
+                <div className="space-y-5">
+                  <div data-testid="field-concern_duration" className="space-y-2">
+                    <span className="block text-sm font-medium text-text">Duration</span>
+                    <PillRadioGroup
+                      name="concern_duration"
+                      value={formData.concern_duration}
+                      options={DURATION_OPTIONS}
+                      onChange={(v) => updateField('concern_duration', v as StructuredCheckIn['concern_duration'])}
+                    />
+                  </div>
+                  <div data-testid="field-sleep_impact" className="space-y-2">
+                    <span className="block text-sm font-medium text-text">Sleep impact</span>
+                    <PillRadioGroup
+                      name="sleep_impact"
+                      value={formData.sleep_impact}
+                      options={SLEEP_IMPACT_OPTIONS}
+                      onChange={(v) => updateField('sleep_impact', v as StructuredCheckIn['sleep_impact'])}
+                    />
+                  </div>
+                  <div data-testid="field-daily_functioning_impact" className="space-y-2">
+                    <span className="block text-sm font-medium text-text">Daily functioning impact</span>
+                    <PillRadioGroup
+                      name="daily_functioning_impact"
+                      value={formData.daily_functioning_impact}
+                      options={FUNCTIONING_OPTIONS}
+                      onChange={(v) => updateField('daily_functioning_impact', v as StructuredCheckIn['daily_functioning_impact'])}
+                    />
+                  </div>
+                  <div data-testid="field-support_preference" className="space-y-2">
+                    <span className="block text-sm font-medium text-text">Support preference</span>
+                    <PillRadioGroup
+                      name="support_preference"
+                      value={formData.support_preference}
+                      options={SUPPORT_OPTIONS}
+                      onChange={(v) => updateField('support_preference', v as StructuredCheckIn['support_preference'])}
+                    />
+                  </div>
+                  <div data-testid="field-feels_safe" className="space-y-2">
+                    <span className="block text-sm font-medium text-text">Safety response</span>
+                    <PillRadioGroup
+                      name="feels_safe"
+                      value={formData.feels_safe}
+                      options={SAFETY_OPTIONS}
+                      onChange={(v) => updateField('feels_safe', v as StructuredCheckIn['feels_safe'])}
+                    />
+                    <p className="text-xs text-text-muted italic">This is your direct response, not an AI assessment.</p>
+                  </div>
+                </div>
+              </div>
 
               {/* Symptom buckets */}
               <section>
@@ -856,21 +992,35 @@ function SummaryPageContent(): React.ReactNode {
                 </div>
               )}
 
-              {/* Confirm button */}
-              <div className="pt-4 space-y-3">
+              {/* Final actions — regenerate or confirm, both at the end */}
+              <div className="pt-2 space-y-3">
                 {isOfflineSession && (
                   <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-text-muted">
                     You are offline. You can review and edit your summary above, but confirming it requires a connection.
                   </div>
                 )}
-                <button
-                  data-testid="confirm-summary"
-                  onClick={handleConfirm}
-                  disabled={confirming || isOfflineSession}
-                  className="bg-primary text-white hover:bg-primary-light rounded-lg px-6 py-3 text-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full"
-                >
-                  {confirming ? 'Confirming…' : 'Confirm Summary'}
-                </button>
+                <div className="bg-surface border border-text/10 rounded-2xl p-4 space-y-3">
+                  <p className="text-sm text-text-muted text-center">
+                    Reviewed everything? Regenerate the reflection for a fresh take, or confirm to save.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      onClick={() => void handleRegenerate()}
+                      disabled={regenerating || isOfflineSession}
+                      className="flex-1 text-sm px-4 py-3 border border-text/20 text-text rounded-lg hover:border-primary hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {regenerating ? 'Regenerating…' : 'Regenerate summary'}
+                    </button>
+                    <button
+                      data-testid="confirm-summary"
+                      onClick={handleConfirm}
+                      disabled={confirming || isOfflineSession}
+                      className="flex-1 bg-primary text-white hover:bg-primary-light rounded-lg px-6 py-3 text-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {confirming ? 'Confirming…' : 'Confirm Summary'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -890,7 +1040,7 @@ function SummaryPageContent(): React.ReactNode {
 
             {/* AI Narrative (confirmed) */}
             <div className="bg-primary/5 border border-primary/20 rounded-xl p-6 mb-6">
-              <h2 className="text-base font-semibold text-text mb-2">Manus reflected summary</h2>
+              <h2 className="text-base font-semibold text-text mb-2">Manas reflected summary</h2>
               <p className="text-text leading-relaxed">{aiNarrative || generateOfflineNarrative(formData)}</p>
             </div>
 
@@ -907,47 +1057,26 @@ function SummaryPageContent(): React.ReactNode {
               </div>
             )}
 
-            {/* Sources / citations (confirmed) */}
-            {companionContext && companionContext.citations.length > 0 && (
-              <div data-testid="sources-panel" className="bg-surface border border-text/10 rounded-xl p-6 mb-6">
-                <div className="flex items-start gap-3 mb-3">
-                  <svg className="w-5 h-5 text-primary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                  <h2 className="text-base font-semibold text-text">Sources and techniques</h2>
-                </div>
+            {/* Proposed techniques (with sources) — confirmed */}
+            {companionContext && (companionContext.techniques.length > 0 || companionContext.citations.length > 0) && (
+              <div data-testid="sources-panel" className="bg-surface border border-text/10 rounded-2xl p-6 mb-6">
+                <SectionHeader
+                  icon={
+                    <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.674M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                  }
+                  title="Proposed Techniques"
+                  subtitle="Tap a technique to expand its steps."
+                />
                 {companionContext.techniques.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-sm text-text-muted mb-2">Techniques mentioned:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {companionContext.techniques.map((t) => (
-                        <span key={t.id} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                          {t.name}
-                        </span>
-                      ))}
-                    </div>
+                  <div className="space-y-3 mb-5">
+                    {companionContext.techniques.map((t) => (
+                      <TechniqueCard key={t.id} technique={t} />
+                    ))}
                   </div>
                 )}
-                <ul className="space-y-3">
-                  {companionContext.citations.map((citation, idx) => (
-                    <li key={idx} className="text-sm">
-                      <p className="font-medium text-text">{citation.title ?? citation.source}</p>
-                      {citation.description && <p className="text-text-muted">{citation.description}</p>}
-                      {citation.url ? (
-                        <a
-                          href={citation.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline text-xs"
-                        >
-                          {citation.source}{citation.year ? ` (${citation.year})` : ''}
-                        </a>
-                      ) : (
-                        <p className="text-text-muted text-xs">{citation.source}{citation.year ? ` (${citation.year})` : ''}</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                <CollapsibleSources citations={companionContext.citations} />
               </div>
             )}
 
@@ -1110,11 +1239,6 @@ function generateOfflineNarrative(summary: StructuredCheckIn): string {
   return `You've shared that "${primaryConcern}" has been difficult for ${duration}. ` +
     `You're looking for ${support}. ` +
     "This is a reflection of what you told me — not a diagnosis or clinical assessment.";
-}
-
-function generateOfflineKeyPoints(summary: StructuredCheckIn): string[] {
-  if (summary.key_points && summary.key_points.length > 0) return summary.key_points;
-  return [summary.primary_concern ?? 'Primary concern'];
 }
 
 export default function SummaryPage(): React.ReactNode {

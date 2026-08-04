@@ -41,10 +41,13 @@ export interface StepResult {
   primaryArchetype: string;
   techniques: TechniqueSuggestion[];
   followUpQuestions: string[];
+  /** First-person user elaboration phrases for the \"You could say\u2026\" panel. */
+  userInputPrompts: string[];
   inferredSymptoms: InferredSymptomSuggestion[];
   safetyFlag: boolean;
   safetyMessage: string | null;
   crossSessionInsight: string | null;
+  readiness: 'continue_exploring' | 'almost_ready' | 'ready_to_summarize';
   citations: Array<{
     source: string;
     title?: string;
@@ -296,17 +299,17 @@ function buildUserFacingResponse(
     parts.push(engineOutput.safetyMessage);
   }
 
+  // Plain-text validation — no markdown
   parts.push(engineOutput.validation);
 
-  if (!engineOutput.safetyFlag && engineOutput.techniques.length > 0) {
-    const technique = engineOutput.techniques[0];
-    parts.push(
-      `One approach that may help right now is **${technique.name}** — ${technique.whenToUse.charAt(0).toLowerCase()}${technique.whenToUse.slice(1)}`,
-    );
+  // Cross-session insight — surface it naturally in the response text
+  if (engineOutput.crossSessionInsight && !engineOutput.safetyFlag) {
+    parts.push(engineOutput.crossSessionInsight);
   }
 
-  if (!engineOutput.safetyFlag && missingFields.length > 0) {
-    parts.push(FIELD_QUESTIONS[missingFields[0]] ?? 'Can you tell me a bit more?');
+  // Encourage sharing more if we still need the primary concern
+  if (!engineOutput.safetyFlag && missingFields.length > 0 && missingFields[0] === 'primary_concern') {
+    parts.push('Take your time — there is no right or wrong way to describe what you are going through.');
   }
 
   return parts.join('\n\n');
@@ -354,10 +357,11 @@ export class CheckInOrchestrator {
   async createSession(
     mode: 'GUEST' | 'CONNECTED_CARE',
     language: 'en',
+    authenticatedUserId?: string,
   ): Promise<CheckInSession> {
     const session: CheckInSession = {
       id: generateId(),
-      userId: mode === 'GUEST' ? 'guest' : 'connected',
+      userId: mode === 'GUEST' ? 'guest' : (authenticatedUserId ?? 'connected'),
       mode,
       language,
       status: 'INITIATED',
@@ -406,6 +410,9 @@ export class CheckInOrchestrator {
     step: string,
     userInput: string,
     structuredAnswers: Partial<StructuredCheckIn>,
+    turnNumber: number = 1,
+    sessionTechniques: string[] = [],
+    sessionUserMessages: string[] = [],
   ): Promise<StepResult> {
     // Validate step
     if (!CHECK_IN_STEPS.includes(step)) {
@@ -459,10 +466,12 @@ export class CheckInOrchestrator {
         primaryArchetype: 'general_wellbeing',
         techniques: [],
         followUpQuestions: [],
+        userInputPrompts: [],
         inferredSymptoms: [],
         safetyFlag: false,
         safetyMessage: null,
         crossSessionInsight: null,
+        readiness: 'continue_exploring',
         citations: [],
       };
     }
@@ -499,10 +508,12 @@ export class CheckInOrchestrator {
         primaryArchetype: 'general_wellbeing',
         techniques: [],
         followUpQuestions: [],
+        userInputPrompts: [],
         inferredSymptoms: [],
         safetyFlag: true,
         safetyMessage: preGen.userFacingMessage ?? null,
         crossSessionInsight: null,
+        readiness: 'continue_exploring',
         citations: [],
       };
     }
@@ -542,10 +553,12 @@ export class CheckInOrchestrator {
       engineOutput = await this.proactiveEngine.process({
         message: userInput,
         language: session.language as 'en' | 'hi' | 'hi-hinglish',
-        turnNumber: 1,
+        turnNumber,
         previousSessions,
         previousSymptoms,
         existingStructuredAnswers: extractedAnswers,
+        sessionTechniques,
+        sessionUserMessages,
       });
     } catch {
       // Fallback: deterministic validation + next missing field question.
@@ -556,8 +569,10 @@ export class CheckInOrchestrator {
         validation: 'Thank you for sharing that with me.',
         techniques: [],
         followUpQuestions: missing.length > 0 ? [FIELD_QUESTIONS[missing[0]] ?? 'Can you tell me more?'] : [],
+        userInputPrompts: [],
         inferredSymptoms: [],
         safetyFlag: false,
+        readiness: 'continue_exploring',
         citations: [],
       };
     }
@@ -578,10 +593,12 @@ export class CheckInOrchestrator {
       primaryArchetype: engineOutput.primaryArchetype,
       techniques: mapEngineTechniques(engineOutput),
       followUpQuestions: engineOutput.followUpQuestions,
+      userInputPrompts: engineOutput.userInputPrompts,
       inferredSymptoms: mapEngineSymptoms(engineOutput),
       safetyFlag: engineOutput.safetyFlag,
       safetyMessage: engineOutput.safetyMessage ?? null,
       crossSessionInsight: engineOutput.crossSessionInsight ?? null,
+      readiness: engineOutput.readiness,
       citations: engineOutput.citations,
     };
   }
@@ -619,6 +636,7 @@ export class CheckInOrchestrator {
   async completeSession(
     sessionId: string,
     structuredAnswers: StructuredCheckIn,
+    variant = 0,
   ): Promise<DraftCompleteResult> {
     const session = await this.deps.sessionRepo.findById(sessionId);
     if (!session) {
@@ -632,6 +650,7 @@ export class CheckInOrchestrator {
         sessionId,
         session.structuredSummary,
         session,
+        variant,
       );
       return {
         draftSummary: session.structuredSummary,
@@ -688,6 +707,7 @@ export class CheckInOrchestrator {
       sessionId,
       structuredAnswers,
       session,
+      variant,
     );
 
     await this.deps.auditLogger.log({
@@ -729,6 +749,7 @@ export class CheckInOrchestrator {
     sessionId: string,
     summary: StructuredCheckIn,
     session: CheckInSession,
+    variant = 0,
   ): Promise<{ narrative: string; suggestedKeyPoints: string[] }> {
     const durationLabels: Record<string, string> = {
       days: 'a few days',
@@ -757,29 +778,55 @@ export class CheckInOrchestrator {
     const supportPreference = (summary.support_preference as string) || 'general_reflection';
     const feelsSafe = (summary.feels_safe as string) || 'prefer_not_to_answer';
 
-    const fallbackNarrative =
+    const supportLabel = supportPreference.replace(/_/g, ' ');
+
+    // Paraphrase variants so "Regenerate" produces a fresh, still-accurate
+    // reflection instead of the identical text.
+    const fallbackVariants = [
       `You've shared that "${primaryConcern}" has been difficult for ${durationLabels[concernDuration]}. ` +
-      `You noticed ${sleepLabels[sleepImpact]} and ${functioningLabels[functioningImpact]}. ` +
-      `You're looking for ${supportPreference.replace(/_/g, ' ')}. ` +
-      "This is a reflection of what you told me — not a diagnosis or clinical assessment.";
+        `You noticed ${sleepLabels[sleepImpact]} and ${functioningLabels[functioningImpact]}. ` +
+        `You're looking for ${supportLabel}. ` +
+        "This is a reflection of what you told me — not a diagnosis or clinical assessment.",
+      `Thank you for opening up. The main thing weighing on you is "${primaryConcern}", ` +
+        `and it has been going on for ${durationLabels[concernDuration]}. ` +
+        `It has had ${sleepLabels[sleepImpact]} and ${functioningLabels[functioningImpact]}. ` +
+        `Right now you're leaning toward ${supportLabel}. ` +
+        "This reflects your own words — it is not a diagnosis or clinical assessment.",
+      `I hear you. "${primaryConcern}" has been hard to carry for ${durationLabels[concernDuration]}, ` +
+        `with ${sleepLabels[sleepImpact]} and ${functioningLabels[functioningImpact]}. ` +
+        `You mentioned you'd like ${supportLabel}. ` +
+        "This is a reflection of what you shared — not a diagnosis or clinical assessment.",
+    ];
+    const fallbackNarrative = fallbackVariants[Math.abs(variant) % fallbackVariants.length];
 
     const fallbackKeyPoints = [
       primaryConcern,
       `Duration: ${durationLabels[concernDuration]}`,
       `Sleep: ${sleepLabels[sleepImpact]}`,
       `Daily functioning: ${functioningLabels[functioningImpact]}`,
-      `Support preference: ${supportPreference.replace(/_/g, ' ')}`,
+      `Support preference: ${supportLabel}`,
     ];
+
+    const keyPoints =
+      summary.key_points && summary.key_points.length > 0
+        ? summary.key_points.slice(0, 10)
+        : fallbackKeyPoints;
+
+    // On explicit regeneration, return a fresh deterministic variant so the
+    // reflection visibly changes while staying accurate and safe.
+    if (variant > 0) {
+      return { narrative: fallbackNarrative, suggestedKeyPoints: keyPoints };
+    }
 
     try {
       const prompt =
-        "You are Manus, a warm AI wellbeing companion. Write a short, compassionate, non-diagnostic summary (max 200 words) based on the following check-in. " +
+        "You are Manas, a warm AI wellbeing companion. Write a short, compassionate, non-diagnostic summary (max 200 words) based on the following check-in. " +
         "Do not diagnose, label, or recommend medication. Reflect the user's own words.\n\n" +
         `Primary concern: ${primaryConcern}\n` +
         `Duration: ${durationLabels[concernDuration]}\n` +
         `Sleep impact: ${sleepLabels[sleepImpact]}\n` +
         `Daily functioning impact: ${functioningLabels[functioningImpact]}\n` +
-        `Support preference: ${supportPreference.replace(/_/g, ' ')}\n` +
+        `Support preference: ${supportLabel}\n` +
         `Feels safe right now: ${feelsSafe}`;
 
       const context: ModelGatewayContext = {
@@ -792,11 +839,6 @@ export class CheckInOrchestrator {
       const aiOutput = await this.deps.modelGateway.generate(prompt, context);
       const postGen = checkPostGenSafety(aiOutput.user_facing_response);
       const narrative = postGen.safe ? aiOutput.user_facing_response : fallbackNarrative;
-
-      const keyPoints =
-        summary.key_points && summary.key_points.length > 0
-          ? summary.key_points.slice(0, 10)
-          : fallbackKeyPoints;
 
       return { narrative, suggestedKeyPoints: keyPoints };
     } catch {

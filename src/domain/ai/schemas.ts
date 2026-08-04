@@ -126,6 +126,12 @@ export const PostMessageRequestSchema = z.object({
   content: z.string().min(1).max(1000),
   currentStep: CheckInStepSchema,
   structuredAnswers: StructuredCheckInSchema.partial(),
+  /** Actual conversation turn (1 = first user message). Used to stage depth. */
+  turnNumber: z.number().int().min(1).default(1),
+  /** Technique IDs already shown earlier in this session — prevents repeats. */
+  sessionTechniques: z.array(z.string()).default([]),
+  /** User message texts from earlier in this session — powers the recap. */
+  sessionUserMessages: z.array(z.string().max(1000)).max(60).default([]),
 });
 export type PostMessageRequest = z.infer<typeof PostMessageRequestSchema>;
 
@@ -171,10 +177,14 @@ export const PostMessageResponseSchema = z.object({
   primaryArchetype: z.string().default('general_wellbeing'),
   techniques: z.array(TechniqueSuggestionSchema).default([]),
   followUpQuestions: z.array(z.string()).default([]),
+  /** First-person phrases the user might type — shown in the "You could say…" panel. */
+  userInputPrompts: z.array(z.string()).default([]),
   inferredSymptoms: z.array(InferredSymptomSuggestionSchema).default([]),
   safetyFlag: z.boolean().default(false),
   safetyMessage: z.string().nullable().default(null),
   crossSessionInsight: z.string().nullable().default(null),
+  /** Conversation readiness signal: when to summarize or suggest professional help. */
+  readiness: z.enum(['continue_exploring', 'almost_ready', 'ready_to_summarize']).default('continue_exploring'),
   citations: z.array(z.object({
     source: z.string(),
     title: z.string().optional(),

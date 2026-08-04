@@ -27,6 +27,9 @@ export async function POST(
       parsed.data.currentStep,
       parsed.data.content,
       parsed.data.structuredAnswers,
+      parsed.data.turnNumber,
+      parsed.data.sessionTechniques,
+      parsed.data.sessionUserMessages,
     );
 
     return NextResponse.json({
@@ -45,6 +48,7 @@ export async function POST(
       safetyFlag: result.safetyFlag,
       safetyMessage: result.safetyMessage,
       crossSessionInsight: result.crossSessionInsight,
+      readiness: result.readiness,
       citations: result.citations,
     });
   } catch {

@@ -97,6 +97,19 @@ export interface Provider {
   currency: string;
   sessionDurationMinutes: number;
   nextAvailable: string;
+  /**
+   * Structured scheduling fields used to convert the provider's local hours
+   * into the viewer's selected timezone. All times are in `timezone` local time.
+   */
+  timezone?: string;
+  availabilityDays?: string;
+  availabilityStartHour?: number;
+  availabilityStartMinute?: number;
+  availabilityEndHour?: number;
+  availabilityEndMinute?: number;
+  nextAvailableDay?: string;
+  nextAvailableHour?: number;
+  nextAvailableMinute?: number;
   credentialsNote: string;
   bio: string;
   isFictionalDemo: boolean;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CreateCheckInRequestSchema } from '@/domain/ai';
 import { createServices, createCheckInOrchestrator } from '@/lib/services';
+import { getSession } from '@/domain/auth';
 
 /**
  * GET /api/check-ins
@@ -51,10 +52,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const services = createServices();
     const orchestrator = createCheckInOrchestrator(services);
+    const authSession = await getSession();
 
     const session = await orchestrator.createSession(
       parsed.data.mode,
       parsed.data.language,
+      authSession?.sub,
     );
 
     return NextResponse.json({
