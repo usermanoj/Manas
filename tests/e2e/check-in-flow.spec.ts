@@ -18,7 +18,7 @@ test.describe('Check-in E2E Flow', () => {
     // -----------------------------------------------------------------------
     // 2. Click CTA to navigate to /check-in
     // -----------------------------------------------------------------------
-    await page.getByRole('link', { name: /begin check-in/i }).click();
+    await page.getByRole('button', { name: /begin check-in/i }).click();
     await page.waitForURL('**/check-in');
 
     // -----------------------------------------------------------------------

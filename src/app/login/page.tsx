@@ -15,6 +15,13 @@ export default function LoginPage(): React.ReactNode {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Optional safe internal return path, e.g. /login?next=/check-in.
+  const nextPath = (): string => {
+    if (typeof window === 'undefined') return '/';
+    const next = new URLSearchParams(window.location.search).get('next');
+    return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+  };
+
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setSubmitting(true);
@@ -30,7 +37,7 @@ export default function LoginPage(): React.ReactNode {
         throw new Error(data.error ?? 'Login failed.');
       }
       await refresh();
-      router.push('/');
+      router.push(nextPath());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed.');
     } finally {
@@ -99,7 +106,10 @@ export default function LoginPage(): React.ReactNode {
             <div className="mt-6 pt-6 border-t border-text/10 text-center text-sm text-text-muted">
               <p>
                 Don&apos;t have an account?{' '}
-                <Link href="/register" className="text-primary hover:underline font-medium">
+                <Link
+                  href={typeof window !== 'undefined' && window.location.search ? `/register${window.location.search}` : '/register'}
+                  className="text-primary hover:underline font-medium"
+                >
                   Create one
                 </Link>
               </p>

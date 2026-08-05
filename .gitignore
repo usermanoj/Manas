@@ -31,3 +31,6 @@ landing-*.png
 
 # local Vercel deploy helper scripts
 .vercel-tmp/
+
+# local file-backed demo persistence
+.data/

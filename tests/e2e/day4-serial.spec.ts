@@ -31,7 +31,7 @@ test.describe('Day 4: Full Demo Flow', () => {
     await page.goto('/');
     await expect(page.locator('h1')).toBeVisible();
 
-    await page.getByRole('link', { name: /begin check-in/i }).click();
+    await page.getByRole('button', { name: /begin check-in/i }).click();
     await page.waitForURL('**/check-in');
 
     const beginBtn = page.getByTestId('begin-check-in');

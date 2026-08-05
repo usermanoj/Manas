@@ -1,6 +1,6 @@
 import Image from 'next/image';
-import Link from 'next/link';
 import { BRAND } from '@/lib/config/brand';
+import { SetupBar } from '@/components/landing/SetupBar';
 
 const VALUE_POINTS = [
   {
@@ -182,62 +182,8 @@ export default function LandingPage(): React.ReactNode {
         <div className="max-w-4xl mx-auto px-4 md:px-8 pb-2 [@media(min-height:840px)]:pb-4">
           <div className="bg-surface/80 backdrop-blur-sm rounded-3xl border border-text/10 shadow-xl shadow-text/5 px-6 md:px-8 py-3 [@media(min-height:840px)]:py-4 animate-fade-up" style={{ animationDelay: '0.35s' }}>
             <div className="flex flex-col items-center gap-3.5">
-              {/* Language + mode — one centred row */}
-              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
-                {/* Language pills */}
-                <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-text">
-                    <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Language
-                  </span>
-                  <label className="cursor-pointer group">
-                    <input type="radio" name="language" value="en" defaultChecked className="sr-only" />
-                    <span className="inline-flex items-center rounded-full border border-text/15 bg-background/60 px-3.5 py-1.5 text-xs font-medium text-text transition-all duration-200 group-hover:border-primary/40 has-checked:border-primary has-checked:bg-primary/8 has-checked:text-primary has-checked:shadow-sm">
-                      English
-                    </span>
-                  </label>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-text/10 bg-background/40 px-3.5 py-1.5 text-xs font-medium text-text-muted opacity-70 cursor-not-allowed">
-                    More languages
-                    <span className="text-[9px] font-semibold uppercase tracking-wide bg-warning/15 text-warning px-1.5 py-0.5 rounded-full">
-                      Soon
-                    </span>
-                  </span>
-                </div>
-
-                <span className="hidden sm:block w-px h-6 bg-text/10" aria-hidden="true" />
-
-                {/* Mode — segmented pills */}
-                <div className="flex items-center gap-2">
-                  <label className="cursor-pointer group">
-                    <input type="radio" name="mode" value="guest" defaultChecked className="sr-only" />
-                    <span className="inline-flex items-center gap-2 rounded-full border border-text/15 bg-background/60 px-4 py-2 text-sm font-medium text-text transition-all duration-200 group-hover:border-primary/40 has-checked:border-primary has-checked:bg-primary/8 has-checked:text-primary has-checked:shadow-sm">
-                      <span className="w-2 h-2 rounded-full border border-text/30 transition-colors group-has-checked:border-primary group-has-checked:bg-primary" aria-hidden="true" />
-                      Guest Mode
-                      <span className="text-[9px] font-semibold uppercase tracking-wide bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">Quickest</span>
-                    </span>
-                  </label>
-                  <label className="cursor-pointer group">
-                    <input type="radio" name="mode" value="connected" className="sr-only" />
-                    <span className="inline-flex items-center gap-2 rounded-full border border-text/15 bg-background/60 px-4 py-2 text-sm font-medium text-text transition-all duration-200 group-hover:border-primary/40 has-checked:border-primary has-checked:bg-primary/8 has-checked:text-primary has-checked:shadow-sm">
-                      <span className="w-2 h-2 rounded-full border border-text/30 transition-colors group-has-checked:border-primary group-has-checked:bg-primary" aria-hidden="true" />
-                      Connected Care
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* CTA — centred */}
-              <Link
-                href="/check-in"
-                className="group inline-flex items-center gap-2 bg-gradient-to-r from-primary to-primary-light hover:from-primary-light hover:to-primary text-white font-semibold px-10 py-3 rounded-2xl text-sm shadow-lg shadow-primary/25 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/30 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 outline-none"
-              >
-                Begin Check-In
-                <svg className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              </Link>
+              {/* Language + mode + gated CTA — client-driven so Connected Care can route through sign-in */}
+              <SetupBar />
             </div>
 
             <p className="mt-2 [@media(min-height:840px)]:mt-3 text-[10px] [@media(min-height:840px)]:text-[11px] text-text-muted text-center leading-relaxed [@media(min-width:1024px)]:whitespace-nowrap">

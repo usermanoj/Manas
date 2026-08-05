@@ -44,6 +44,7 @@ import type { ChatbotServiceDeps } from '@/domain/chatbot';
 import { ProactiveWellbeingEngine } from '@/domain/wellbeing';
 import { CheckInOrchestrator } from '@/domain/check-in';
 import type { CheckInOrchestratorDeps } from '@/domain/check-in';
+import { FileBackedUserAccountRepository } from '@/infrastructure/database/file-user-account-repository';
 import { env } from '@/lib/config/env';
 
 /**
@@ -103,7 +104,8 @@ const providerRepo = new InMemoryRepository<Provider>();
 const profileRepo = new InMemoryRepository<Profile>();
 const contentModuleRepo = new InMemoryRepository<ContentModule>();
 const contentModuleVersionRepo = new InMemoryRepository<ContentModuleVersion>();
-const userAccountRepo = new InMemoryRepository<UserAccount>();
+// File-backed so runtime-registered accounts survive dev-server restarts.
+const userAccountRepo = new FileBackedUserAccountRepository(SEED_USER_ACCOUNTS as UserAccount[]);
 const professionalAccountRepo = new InMemoryRepository<ProfessionalAccount>();
 const symptomEntryRepo = new InMemoryRepository<SymptomEntry>();
 
@@ -114,7 +116,6 @@ handoffRepo.seed(SEED_HANDOFFS);
 consentRecordRepo.seed(SEED_CONSENT_RECORDS);
 contentModuleRepo.seed(SEED_CONTENT_MODULES);
 contentModuleVersionRepo.seed(SEED_CONTENT_MODULE_VERSIONS);
-userAccountRepo.seed(SEED_USER_ACCOUNTS as UserAccount[]);
 professionalAccountRepo.seed(SEED_PROFESSIONAL_ACCOUNTS as ProfessionalAccount[]);
 symptomEntryRepo.seed(SEED_SYMPTOM_ENTRIES);
 

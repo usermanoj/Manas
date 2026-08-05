@@ -18,6 +18,13 @@ export default function RegisterPage(): React.ReactNode {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Optional safe internal return path, e.g. /register?next=/check-in.
+  const nextPath = (): string => {
+    if (typeof window === 'undefined') return '/';
+    const next = new URLSearchParams(window.location.search).get('next');
+    return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+  };
+
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setSubmitting(true);
@@ -39,7 +46,7 @@ export default function RegisterPage(): React.ReactNode {
         throw new Error(data.error ?? 'Registration failed.');
       }
       await refresh();
-      router.push('/');
+      router.push(nextPath());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed.');
     } finally {
