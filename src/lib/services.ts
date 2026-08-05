@@ -92,32 +92,80 @@ function createModelGateway(): ModelGateway {
  * Singleton repositories — shared across requests in the same process.
  * This is required for the in-memory implementation to maintain state across
  * API calls. The future Supabase adapter will replace these with a real DB.
+ *
+ * Anchored on globalThis so dev-server hot reloads (which re-instantiate the
+ * server module graph) do not silently wipe runtime state mid-demo.
  */
-const sessionRepo = new InMemoryRepository<CheckInSession>();
-const safetyAssessmentRepo = new InMemoryRepository<SafetyAssessment>();
-const auditLogger = new InMemoryAuditLogger();
-const handoffRepo = new InMemoryRepository<Handoff>();
-const consentRecordRepo = new InMemoryRepository<ConsentRecord>();
-const carePlanRepo = new InMemoryRepository<CarePlan>();
-const carePlanVersionRepo = new InMemoryRepository<CarePlanVersion>();
-const providerRepo = new InMemoryRepository<Provider>();
-const profileRepo = new InMemoryRepository<Profile>();
-const contentModuleRepo = new InMemoryRepository<ContentModule>();
-const contentModuleVersionRepo = new InMemoryRepository<ContentModuleVersion>();
-// File-backed so runtime-registered accounts survive dev-server restarts.
-const userAccountRepo = new FileBackedUserAccountRepository(SEED_USER_ACCOUNTS as UserAccount[]);
-const professionalAccountRepo = new InMemoryRepository<ProfessionalAccount>();
-const symptomEntryRepo = new InMemoryRepository<SymptomEntry>();
+interface RepositoryStore {
+  sessionRepo: InMemoryRepository<CheckInSession>;
+  safetyAssessmentRepo: InMemoryRepository<SafetyAssessment>;
+  auditLogger: InMemoryAuditLogger;
+  handoffRepo: InMemoryRepository<Handoff>;
+  consentRecordRepo: InMemoryRepository<ConsentRecord>;
+  carePlanRepo: InMemoryRepository<CarePlan>;
+  carePlanVersionRepo: InMemoryRepository<CarePlanVersion>;
+  providerRepo: InMemoryRepository<Provider>;
+  profileRepo: InMemoryRepository<Profile>;
+  contentModuleRepo: InMemoryRepository<ContentModule>;
+  contentModuleVersionRepo: InMemoryRepository<ContentModuleVersion>;
+  userAccountRepo: FileBackedUserAccountRepository;
+  professionalAccountRepo: InMemoryRepository<ProfessionalAccount>;
+  symptomEntryRepo: InMemoryRepository<SymptomEntry>;
+}
 
-// Seed demo data into singleton repositories (synchronous via .seed())
-profileRepo.seed(SEED_PROFILES);
-providerRepo.seed(SEED_PROVIDERS);
-handoffRepo.seed(SEED_HANDOFFS);
-consentRecordRepo.seed(SEED_CONSENT_RECORDS);
-contentModuleRepo.seed(SEED_CONTENT_MODULES);
-contentModuleVersionRepo.seed(SEED_CONTENT_MODULE_VERSIONS);
-professionalAccountRepo.seed(SEED_PROFESSIONAL_ACCOUNTS as ProfessionalAccount[]);
-symptomEntryRepo.seed(SEED_SYMPTOM_ENTRIES);
+const globalStore = globalThis as unknown as { __manasRepositoryStore?: RepositoryStore };
+
+function createRepositoryStore(): RepositoryStore {
+  const store: RepositoryStore = {
+    sessionRepo: new InMemoryRepository<CheckInSession>(),
+    safetyAssessmentRepo: new InMemoryRepository<SafetyAssessment>(),
+    auditLogger: new InMemoryAuditLogger(),
+    handoffRepo: new InMemoryRepository<Handoff>(),
+    consentRecordRepo: new InMemoryRepository<ConsentRecord>(),
+    carePlanRepo: new InMemoryRepository<CarePlan>(),
+    carePlanVersionRepo: new InMemoryRepository<CarePlanVersion>(),
+    providerRepo: new InMemoryRepository<Provider>(),
+    profileRepo: new InMemoryRepository<Profile>(),
+    contentModuleRepo: new InMemoryRepository<ContentModule>(),
+    contentModuleVersionRepo: new InMemoryRepository<ContentModuleVersion>(),
+    // File-backed so runtime-registered accounts survive dev-server restarts.
+    userAccountRepo: new FileBackedUserAccountRepository(SEED_USER_ACCOUNTS as UserAccount[]),
+    professionalAccountRepo: new InMemoryRepository<ProfessionalAccount>(),
+    symptomEntryRepo: new InMemoryRepository<SymptomEntry>(),
+  };
+
+  // Seed demo data into singleton repositories (synchronous via .seed())
+  store.profileRepo.seed(SEED_PROFILES);
+  store.providerRepo.seed(SEED_PROVIDERS);
+  store.handoffRepo.seed(SEED_HANDOFFS);
+  store.consentRecordRepo.seed(SEED_CONSENT_RECORDS);
+  store.contentModuleRepo.seed(SEED_CONTENT_MODULES);
+  store.contentModuleVersionRepo.seed(SEED_CONTENT_MODULE_VERSIONS);
+  store.professionalAccountRepo.seed(SEED_PROFESSIONAL_ACCOUNTS as ProfessionalAccount[]);
+  store.symptomEntryRepo.seed(SEED_SYMPTOM_ENTRIES);
+
+  return store;
+}
+
+const repos: RepositoryStore = globalStore.__manasRepositoryStore ?? createRepositoryStore();
+globalStore.__manasRepositoryStore = repos;
+
+const {
+  sessionRepo,
+  safetyAssessmentRepo,
+  auditLogger,
+  handoffRepo,
+  consentRecordRepo,
+  carePlanRepo,
+  carePlanVersionRepo,
+  providerRepo,
+  profileRepo,
+  contentModuleRepo,
+  contentModuleVersionRepo,
+  userAccountRepo,
+  professionalAccountRepo,
+  symptomEntryRepo,
+} = repos;
 
 /**
  * Create services for the current request.

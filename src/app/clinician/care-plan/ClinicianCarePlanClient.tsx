@@ -78,7 +78,7 @@ export default function ClinicianCarePlanClient(): React.ReactNode {
     { id: 'goal-2', title: 'Develop coping strategies', description: 'Learn and practice healthy coping mechanisms for stress and challenging emotions.' },
   ]);
   const [checkInFrequency, setCheckInFrequency] = useState('twice_per_week');
-  const [boundaries, setBoundaries] = useState('AI acts as facilitator only, no diagnosis or treatment\nEscalate to crisis resources if safety flag is raised\nWeekly clinician review of progress');
+  const [boundaries, setBoundaries] = useState('Support focuses on everyday work-related stress and wellbeing; it does not replace medical care\nShare crisis resources promptly if any safety concern is raised\nWeekly clinician review of progress; plan adjusted only with your approval');
   const [followUpDate, setFollowUpDate] = useState('');
 
   // Revision form state
@@ -102,8 +102,13 @@ export default function ClinicianCarePlanClient(): React.ReactNode {
           }
         }
 
-        // Fetch current care plan for demo user
-        const cpRes = await fetch('/api/care-plans/current');
+        // Fetch the current care plan. Scoping by handoffId lets the API
+        // resolve the handoff's owner so the workspace also works for real
+        // (non-demo) users, not just the demo account.
+        const currentUrl = handoffId
+          ? `/api/care-plans/current?handoffId=${encodeURIComponent(handoffId)}`
+          : '/api/care-plans/current';
+        const cpRes = await fetch(currentUrl);
         if (cpRes.ok) {
           const cpData = await cpRes.json();
           if (cpData.carePlan) {
@@ -140,7 +145,10 @@ export default function ClinicianCarePlanClient(): React.ReactNode {
 
   const refreshCarePlan = useCallback(async () => {
     try {
-      const res = await fetch('/api/care-plans/current');
+      const currentUrl = handoffId
+        ? `/api/care-plans/current?handoffId=${encodeURIComponent(handoffId)}`
+        : '/api/care-plans/current';
+      const res = await fetch(currentUrl);
       if (res.ok) {
         const data = await res.json();
         if (data.carePlan) {
@@ -157,7 +165,7 @@ export default function ClinicianCarePlanClient(): React.ReactNode {
     } catch {
       // Ignore
     }
-  }, []);
+  }, [handoffId]);
 
   const handleCreateCarePlan = async (): Promise<void> => {
     if (!handoffId) return;

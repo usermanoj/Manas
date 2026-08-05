@@ -4,6 +4,22 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { BRAND } from '@/lib/config/brand';
+import {
+  CLINICIAN_NOTE,
+  GENERIC_GOAL_GUIDANCE,
+  WEEKLY_RHYTHM,
+  RESOURCES,
+  CARE_BOUNDARIES_HEADING,
+  guidanceForGoal,
+} from '@/lib/config/care-plan-guidance';
+
+/** Display names for assigned wellbeing modules. */
+const MODULE_DISPLAY: Record<string, { name: string; description: string }> = {
+  'module-pause-reflect': {
+    name: 'Pause & Reflect',
+    description: 'A guided 10-minute grounding practice: slow breathing, a brief body scan, and one written reflection to settle the nervous system between work demands.',
+  },
+};
 
 interface VersionData {
   id: string;
@@ -60,14 +76,33 @@ function statusBadgeClass(status: string): string {
 }
 
 /**
- * Turn a clinician/provider ID like "provider-dr-maya-rao" into a readable name.
+ * Turn a clinician/provider ID like "provider-dr-maya-rao" or a profile id
+ * like "profile-aekta-brahmbhatt" into a readable name.
  */
 function formatClinicianName(clinicianId: string): string {
   return clinicianId
-    .replace(/^provider-/, '')
+    .replace(/^(provider|profile)-/, '')
     .split('-')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+/** Minimal provider shape — enough to resolve name + actual-profile flag. */
+interface ProviderInfo {
+  id: string;
+  profileId: string;
+  name: string;
+  isActualProfile?: boolean;
+}
+
+/**
+ * Boundaries arrive as `{ items: string[] }` from the orchestrator — flatten
+ * defensively so the list never renders as a raw object.
+ */
+function boundaryItems(boundaries: Record<string, unknown>): string[] {
+  if (Array.isArray(boundaries)) return boundaries.map(String);
+  const items = boundaries.items;
+  return Array.isArray(items) ? items.map(String) : [];
 }
 
 export default function CarePlanPage(): React.ReactNode {
@@ -75,6 +110,8 @@ export default function CarePlanPage(): React.ReactNode {
   const [, setActiveVersion] = useState<VersionData | null>(null);
   const [latestVersion, setLatestVersion] = useState<VersionData | null>(null);
   const [versions, setVersions] = useState<VersionData[]>([]);
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [userName, setUserName] = useState<string>('there');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,8 +152,31 @@ export default function CarePlanPage(): React.ReactNode {
         if (!cancelled) setLoading(false);
       }
     })();
+    // Resolve provider names/flags so the clinician line matches the
+    // professionals page treatment (actual profile vs fictional demo).
+    fetch('/api/providers')
+      .then((r) => (r.ok ? r.json() : { providers: [] }))
+      .then((d) => { if (!cancelled) setProviders(d.providers ?? []); })
+      .catch(() => { /* non-critical */ });
+    // First name for the clinician's greeting.
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const name = d?.user?.displayName as string | undefined;
+        if (!cancelled && name) setUserName(name.split(' ')[0]);
+      })
+      .catch(() => { /* non-critical */ });
     return () => { cancelled = true; };
   }, []);
+
+  // The plan's clinicianId is the professional's profile id — match it to a
+  // provider to pick up the display name and actual-profile flag.
+  const clinicianProvider = carePlan
+    ? providers.find((p) => p.profileId === carePlan.clinicianId)
+    : undefined;
+  const clinicianDisplayName = clinicianProvider?.name
+    ?? (carePlan ? formatClinicianName(carePlan.clinicianId) : '');
+  const isActualClinician = Boolean(clinicianProvider?.isActualProfile);
 
   const handleAccept = async (): Promise<void> => {
     if (!carePlan) return;
@@ -184,50 +244,134 @@ export default function CarePlanPage(): React.ReactNode {
           </div>
         )}
 
+        {/* A note from your clinician — shown once the plan is active */}
+        {carePlan && latestVersion && carePlan.overallStatus === 'ACTIVE' && (
+          <section className="mb-8">
+            <div className="bg-surface border border-primary/20 rounded-lg p-6 md:p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center text-lg font-semibold">
+                  {clinicianDisplayName.split(' ').map((p) => p[0]).slice(0, 2).join('')}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-text">A note from your clinician</p>
+                  <p className="text-xs text-text-muted">
+                    {clinicianDisplayName} · Counsellor &amp; Psychologist
+                  </p>
+                </div>
+                <span className={`ml-auto inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${statusBadgeClass(latestVersion.status)}`}>
+                  {versionLabel(latestVersion)}
+                </span>
+              </div>
+              <div className="space-y-3 text-sm leading-relaxed text-text">
+                <p className="font-medium">Dear {userName},</p>
+                {CLINICIAN_NOTE.paragraphs.map((p, i) => (
+                  <p key={i} className="text-text/90">{p}</p>
+                ))}
+                <p className="pt-2">{CLINICIAN_NOTE.closing}</p>
+                <div>
+                  <p className="font-medium text-primary">{clinicianDisplayName}</p>
+                  <p className="text-xs text-text-muted">
+                    Plan prepared {latestVersion.clinicianApprovedAt
+                      ? new Date(latestVersion.clinicianApprovedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
+                      : ''}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Current Care Plan Details — show latest version */}
         {carePlan && latestVersion && !hasV2 && (
           <section className="mb-8">
             <div className="bg-surface border border-text/10 rounded-lg p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-medium text-text">
-                  {versionLabel(latestVersion)}
+                  Your plan at a glance
                 </h2>
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${statusBadgeClass(latestVersion.status)}`}>
                   {latestVersion.status.replace(/_/g, ' ')}
                 </span>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-5">
                 <div>
                   <span className="text-sm font-medium text-text">Clinician:</span>
-                  <span className="text-sm text-text-muted ml-2">{formatClinicianName(carePlan.clinicianId)}</span>
-                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
-                    Fictional demonstration
-                  </span>
+                  <span className="text-sm text-text-muted ml-2">{clinicianDisplayName}</span>
+                  {isActualClinician ? (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary">
+                      Actual Profile
+                    </span>
+                  ) : (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
+                      Fictional demonstration
+                    </span>
+                  )}
                 </div>
 
                 <div>
                   <span className="text-sm font-medium text-text">Goals:</span>
-                  <ul className="mt-1 space-y-1">
-                    {latestVersion.goals.map((goal, idx) => (
-                      <li key={idx} className="text-sm text-text-muted pl-4">
-                        &bull; {goal}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="mt-3 space-y-4">
+                    {latestVersion.goals.map((goal, idx) => {
+                      const guidance = guidanceForGoal(goal) ?? GENERIC_GOAL_GUIDANCE;
+                      const withImage = guidanceForGoal(goal);
+                      return (
+                        <div key={idx} className="border border-text/10 rounded-lg overflow-hidden bg-white">
+                          {withImage && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={withImage.image}
+                              alt={withImage.alt}
+                              className="w-full h-44 object-cover"
+                            />
+                          )}
+                          <div className="p-5">
+                            <h3 className="text-base font-medium text-text mb-2">{goal}</h3>
+                            <p className="text-sm leading-relaxed text-text/80 mb-3">{guidance.why}</p>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-primary mb-2">
+                              This week&rsquo;s practice
+                            </p>
+                            <ul className="space-y-2">
+                              {guidance.practices.map((practice, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm text-text-muted">
+                                  <span className="mt-0.5 text-primary">✓</span>
+                                  <span>{practice}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-3 text-xs italic text-text-muted border-l-2 border-primary/30 pl-3">
+                              {guidance.tip}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div>
                   <span className="text-sm font-medium text-text">Assigned Modules:</span>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {latestVersion.assignedModules.map((mod) => (
-                      <span key={mod} className="inline-flex items-center px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">
-                        {mod}
-                        <span className="ml-2 text-[10px] italic text-text-muted">
-                          ({BRAND.prototypeLabel})
-                        </span>
-                      </span>
-                    ))}
+                  <div className="mt-2 space-y-2">
+                    {latestVersion.assignedModules.map((mod) => {
+                      const display = MODULE_DISPLAY[mod];
+                      return (
+                        <div key={mod} className="border border-primary/20 bg-primary/5 rounded-lg p-4">
+                          <div className="flex items-center gap-2">
+                            <span className="text-primary">🌿</span>
+                            <span className="text-sm font-medium text-text">
+                              {display?.name ?? mod}
+                            </span>
+                            <Link href="/module/pause-reflect" className="ml-auto text-xs text-primary hover:underline">
+                              Start practice →
+                            </Link>
+                          </div>
+                          {display && (
+                            <p className="mt-1 text-xs leading-relaxed text-text-muted">{display.description}</p>
+                          )}
+                          <p className="mt-2 text-[10px] italic text-text-muted">({BRAND.prototypeLabel})</p>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -236,14 +380,25 @@ export default function CarePlanPage(): React.ReactNode {
                   <span className="text-sm text-text-muted ml-2">
                     {latestVersion.checkInFrequency.replace(/_/g, ' ')}
                   </span>
+                  <div className="mt-3 border border-text/10 rounded-lg p-4">
+                    <p className="text-sm font-medium text-text mb-2">{WEEKLY_RHYTHM.heading}</p>
+                    <ul className="space-y-2">
+                      {WEEKLY_RHYTHM.items.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-text-muted">
+                          <span aria-hidden>{item.icon}</span>
+                          <span>{item.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
 
                 <div>
-                  <span className="text-sm font-medium text-text">Boundaries:</span>
+                  <span className="text-sm font-medium text-text">{CARE_BOUNDARIES_HEADING}:</span>
                   <ul className="mt-1 space-y-1">
-                    {Object.entries(latestVersion.boundaries).map(([key, value]) => (
-                      <li key={key} className="text-sm text-text-muted pl-4">
-                        &bull; <span className="font-medium">{key}:</span> {String(value)}
+                    {boundaryItems(latestVersion.boundaries).map((item, idx) => (
+                      <li key={idx} className="text-sm text-text-muted pl-4">
+                        &bull; {item}
                       </li>
                     ))}
                   </ul>
@@ -253,8 +408,11 @@ export default function CarePlanPage(): React.ReactNode {
                   <div>
                     <span className="text-sm font-medium text-text">Follow-up Date:</span>
                     <span className="text-sm text-text-muted ml-2">
-                      {new Date(latestVersion.followUpDate).toLocaleDateString()}
+                      {new Date(latestVersion.followUpDate).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
                     </span>
+                    <p className="text-xs text-text-muted mt-1">
+                      I will review your check-ins before this date and adjust the plan if needed.
+                    </p>
                   </div>
                 )}
               </div>
@@ -275,6 +433,37 @@ export default function CarePlanPage(): React.ReactNode {
                   </p>
                 </div>
               )}
+            </div>
+          </section>
+        )}
+
+        {/* Recommended resources from your clinician */}
+        {carePlan && latestVersion && carePlan.overallStatus === 'ACTIVE' && (
+          <section className="mb-8">
+            <h2 className="text-lg font-medium text-text mb-1">Recommended reading</h2>
+            <p className="text-sm text-text-muted mb-4">
+              Hand-picked by {clinicianDisplayName} to complement your plan — start with whichever speaks to you.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {RESOURCES.map((r) => (
+                <a
+                  key={r.url}
+                  href={r.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-surface border border-text/10 rounded-lg p-5 hover:border-primary/40 hover:shadow-sm transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary">
+                      {r.tag}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wide text-text-muted">{r.org}</span>
+                    <span className="ml-auto text-primary text-sm" aria-hidden>↗</span>
+                  </div>
+                  <p className="text-sm font-medium text-text">{r.title}</p>
+                  <p className="text-xs leading-relaxed text-text-muted mt-1">{r.description}</p>
+                </a>
+              ))}
             </div>
           </section>
         )}
@@ -313,14 +502,14 @@ export default function CarePlanPage(): React.ReactNode {
                       {v1.checkInFrequency.replace(/_/g, ' ')}
                     </span>
                   </p>
-                  <p><span className="font-medium text-text">Modules:</span> {v1.assignedModules.join(', ')}</p>
+                  <p><span className="font-medium text-text">Modules:</span> {v1.assignedModules.map((m) => MODULE_DISPLAY[m]?.name ?? m).join(', ')}</p>
                   <p>
-                    <span className="font-medium text-text">Boundaries:</span>
+                    <span className="font-medium text-text">{CARE_BOUNDARIES_HEADING}:</span>
                   </p>
                   <ul className="pl-3 space-y-0.5">
-                    {Object.entries(v1.boundaries).map(([key, value]) => (
-                      <li key={key}>
-                        &bull; <span className="font-medium text-text">{key}:</span> {String(value)}
+                    {boundaryItems(v1.boundaries).map((item, i) => (
+                      <li key={i}>
+                        &bull; {item}
                       </li>
                     ))}
                   </ul>
@@ -357,18 +546,17 @@ export default function CarePlanPage(): React.ReactNode {
                       {v1.checkInFrequency !== v2.checkInFrequency ? ' (changed)' : ''}
                     </span>
                   </p>
-                  <p><span className="font-medium text-text">Modules:</span> {v2.assignedModules.join(', ')}</p>
+                  <p><span className="font-medium text-text">Modules:</span> {v2.assignedModules.map((m) => MODULE_DISPLAY[m]?.name ?? m).join(', ')}</p>
                   <p>
-                    <span className="font-medium text-text">Boundaries:</span>
+                    <span className="font-medium text-text">{CARE_BOUNDARIES_HEADING}:</span>
                   </p>
                   <ul className="pl-3 space-y-0.5">
-                    {Object.entries(v2.boundaries).map(([key, value]) => {
-                      const v1Val = v1.boundaries[key];
-                      const changed = v1Val === undefined || String(v1Val) !== String(value);
+                    {boundaryItems(v2.boundaries).map((item, i) => {
+                      const isNew = !boundaryItems(v1.boundaries).includes(item);
                       return (
-                        <li key={key} className={changed ? 'text-green-600 font-medium' : ''}>
-                          &bull; <span className="font-medium text-text">{key}:</span> {String(value)}
-                          {changed && v1Val !== undefined ? ' (changed)' : changed ? ' (new)' : ''}
+                        <li key={i} className={isNew ? 'text-green-600 font-medium' : ''}>
+                          &bull; {item}
+                          {isNew ? ' (new)' : ''}
                         </li>
                       );
                     })}
@@ -438,7 +626,7 @@ export default function CarePlanPage(): React.ReactNode {
                   <p className="text-xs text-text-muted mt-1">
                     Modules: {v.assignedModules.map((m) => (
                       <span key={m} className="inline-flex items-center mr-2">
-                        {m} <span className="ml-1 text-[10px] italic">({BRAND.prototypeLabel})</span>
+                        {MODULE_DISPLAY[m]?.name ?? m} <span className="ml-1 text-[10px] italic">({BRAND.prototypeLabel})</span>
                       </span>
                     ))}
                   </p>

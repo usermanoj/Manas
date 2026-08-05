@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { CreateCarePlanRequestSchema } from '@/domain/care-plan';
 import { createServices, createCarePlanOrchestrator } from '@/lib/services';
 
+/** Fallback actor when the handoff's destination provider has no linked profile. */
 const DEMO_CLINICIAN_ACTOR = 'profile-dr-maya-rao';
 
 /**
@@ -42,9 +43,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const orchestrator = createCarePlanOrchestrator(services);
 
+    // Attribute the plan to the clinician linked to the handoff's destination
+    // provider so the care plan and its audit trail name the right professional.
+    const linkedProviders = await services.providerRepo.findAll({ id: handoff.providerId });
+    const clinicianActor = linkedProviders[0]?.profileId ?? DEMO_CLINICIAN_ACTOR;
+
     const { carePlan, version } = await orchestrator.createFromHandoff(
       parsed.data.handoffId,
-      DEMO_CLINICIAN_ACTOR,
+      clinicianActor,
       {
         handoffId: parsed.data.handoffId,
         goals: parsed.data.goals,

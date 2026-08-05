@@ -89,6 +89,15 @@ export const SEED_PROFESSIONAL_ACCOUNTS: ProfessionalAccount[] = [
     role: 'clinician',
     createdAt: new Date('2026-01-12T08:00:00.000Z'),
   },
+  {
+    id: 'pro-account-aekta',
+    email: 'aekta.brahmbhatt@manas.demo',
+    passwordHash: hashPassword('clinician123'),
+    displayName: 'Aekta Brahmbhatt',
+    providerId: 'provider-aekta-brahmbhatt',
+    role: 'clinician',
+    createdAt: new Date('2026-01-15T08:00:00.000Z'),
+  },
 ];
 
 // ─── Providers (all isFictionalDemo: true) ─────────────────────────────────────

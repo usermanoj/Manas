@@ -1,22 +1,40 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServices } from '@/lib/services';
+import { getSession } from '@/domain/auth';
 import type { CarePlan, CarePlanVersion } from '@/domain/repositories';
 
 const DEMO_USER_ID = 'profile-ananya-sharma';
 
 /**
- * GET /api/care-plans/current
+ * GET /api/care-plans/current[?handoffId=...]
  *
- * Returns the user's current (latest) care plan with versions.
- * For demo mode: filters by userId `profile-ananya-sharma`.
+ * Returns the signed-in user's current (latest) care plan with versions.
+ * Row-level scoping: plans are filtered by the session's own user id.
+ * For clinician sessions, an optional handoffId resolves the plan owner from
+ * that handoff so the clinician care-plan workspace can manage it; otherwise
+ * it falls back to the demo user.
  */
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const services = createServices();
 
-    // Find all care plans for the demo user
+    const session = await getSession();
+    let userId: string;
+    if (session?.role === 'user') {
+      userId = session.sub;
+    } else {
+      userId = DEMO_USER_ID;
+      const handoffId = request.nextUrl.searchParams.get('handoffId');
+      if (handoffId) {
+        // Clinician workspace: scope to the handoff's owner, not the demo user.
+        const handoff = await services.handoffRepo.findById(handoffId);
+        if (handoff) userId = handoff.userId;
+      }
+    }
+
+    // Find all care plans for the resolved user
     const allCarePlans = await services.carePlanRepo.findAll({
-      userId: DEMO_USER_ID,
+      userId,
     } as Partial<CarePlan>);
 
     if (allCarePlans.length === 0) {

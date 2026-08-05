@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ConsentAndSendRequestSchema } from '@/domain/handoff';
 import { createServices, createHandoffOrchestrator } from '@/lib/services';
+import { getSession } from '@/domain/auth';
 
 const DEMO_USER_ID = 'profile-ananya-sharma';
 
@@ -24,7 +25,10 @@ export async function POST(
     const services = createServices();
     const orchestrator = createHandoffOrchestrator(services);
 
-    const result = await orchestrator.consentAndSend(id, DEMO_USER_ID, parsed.data);
+    // Consent must come from the handoff's owner (row-level scoping).
+    const authSession = await getSession();
+    const userId = authSession?.role === 'user' ? authSession.sub : DEMO_USER_ID;
+    const result = await orchestrator.consentAndSend(id, userId, parsed.data);
 
     return NextResponse.json({
       handoff: {

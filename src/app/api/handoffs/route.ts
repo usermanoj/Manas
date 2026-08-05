@@ -1,19 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CreateHandoffRequestSchema } from '@/domain/handoff';
 import { createServices, createHandoffOrchestrator } from '@/lib/services';
+import { getSession } from '@/domain/auth';
 import type { Handoff } from '@/domain/repositories';
 
 const DEMO_USER_ID = 'profile-ananya-sharma';
 
 /**
+ * Resolve the acting user id from the session. Clinician sessions fall back
+ * to the demo user so the demo workspace keeps working.
+ */
+async function resolveUserId(): Promise<string> {
+  const session = await getSession();
+  return session?.role === 'user' ? session.sub : DEMO_USER_ID;
+}
+
+/**
  * GET /api/handoffs
  *
- * Returns all handoffs for the demo user, newest first.
+ * Returns all handoffs for the signed-in user, newest first.
  */
 export async function GET(): Promise<NextResponse> {
   try {
     const services = createServices();
-    const allHandoffs = await services.handoffRepo.findAll({ userId: DEMO_USER_ID } as Partial<Handoff>);
+    const userId = await resolveUserId();
+    const allHandoffs = await services.handoffRepo.findAll({ userId } as Partial<Handoff>);
     const sorted = allHandoffs.sort((a, b) => {
       const aTime = a.sentAt ? new Date(a.sentAt).getTime() : 0;
       const bTime = b.sentAt ? new Date(b.sentAt).getTime() : 0;
@@ -52,8 +63,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const services = createServices();
     const orchestrator = createHandoffOrchestrator(services);
 
+    // Attribute the handoff to the signed-in user so the downstream care
+    // plan belongs to them (row-level scoping, not a shared demo bucket).
+    const userId = await resolveUserId();
     const handoff = await orchestrator.createDraft(
-      DEMO_USER_ID,
+      userId,
       parsed.data.providerId,
       parsed.data.structuredSummary as never,
       parsed.data.excludedEntries,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServices, createHandoffOrchestrator } from '@/lib/services';
+import { getSession } from '@/domain/auth';
 
 const DEMO_USER_ID = 'profile-ananya-sharma';
 
@@ -17,7 +18,10 @@ export async function POST(
     const services = createServices();
     const orchestrator = createHandoffOrchestrator(services);
 
-    const handoff = await orchestrator.submitForReview(id, DEMO_USER_ID);
+    // The acting user must own the handoff (row-level scoping).
+    const authSession = await getSession();
+    const userId = authSession?.role === 'user' ? authSession.sub : DEMO_USER_ID;
+    const handoff = await orchestrator.submitForReview(id, userId);
 
     return NextResponse.json({
       id: handoff.id,
