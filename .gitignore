@@ -34,3 +34,6 @@ landing-*.png
 
 # local file-backed demo persistence
 .data/
+
+# local demo-video production assets (renders, clips, voices)
+demo-video/
