@@ -22,6 +22,15 @@ export interface RecordSymptomInput {
   impact: string;
 }
 
+/** Editable subset of a symptom entry — used by the update flow. */
+export interface UpdateSymptomInput {
+  text?: string;
+  category?: SymptomCategory;
+  severity?: SymptomSeverity;
+  frequency?: SymptomFrequency;
+  impact?: string;
+}
+
 const CATEGORY_KEYWORDS: Record<SymptomCategory, string[]> = {
   sleep: ['sleep', 'insomnia', 'tired', 'rest', 'nightmare', 'wake'],
   mood: ['mood', 'sad', 'anxious', 'overwhelmed', 'irritable', 'low', 'depressed', 'happy'],
@@ -81,6 +90,35 @@ export class SymptomService {
 
   async getSymptomsForUser(userId: string): Promise<SymptomEntry[]> {
     return this.deps.symptomEntryRepo.findAll({ userId });
+  }
+
+  async updateSymptom(
+    userId: string,
+    symptomId: string,
+    updates: UpdateSymptomInput,
+  ): Promise<SymptomEntry | null> {
+    const entry = await this.deps.symptomEntryRepo.findById(symptomId);
+    if (!entry || entry.userId !== userId) {
+      return null;
+    }
+
+    const updated = await this.deps.symptomEntryRepo.update(symptomId, {
+      ...(updates.text !== undefined ? { text: updates.text.trim() } : {}),
+      ...(updates.category !== undefined ? { category: updates.category } : {}),
+      ...(updates.severity !== undefined ? { severity: updates.severity } : {}),
+      ...(updates.frequency !== undefined ? { frequency: updates.frequency } : {}),
+      ...(updates.impact !== undefined ? { impact: updates.impact.trim() } : {}),
+    });
+
+    await this.deps.auditLogger.log({
+      requestId: `update-${symptomId}`,
+      userId,
+      actor: 'user',
+      eventType: 'SYMPTOM_UPDATED',
+      details: { symptomId, category: updated.category, severity: updated.severity },
+    });
+
+    return updated;
   }
 
   async deleteSymptom(userId: string, symptomId: string): Promise<boolean> {

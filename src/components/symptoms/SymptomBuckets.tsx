@@ -2,6 +2,7 @@
 
 interface SymptomEntry {
   id: string;
+  sessionId?: string;
   text: string;
   category: string;
   severity: string;
@@ -13,7 +14,10 @@ interface SymptomEntry {
 interface SymptomBucketsProps {
   symptoms: SymptomEntry[];
   onDelete?: (id: string) => void;
+  onEdit?: (entry: SymptomEntry) => void;
   deletingId?: string | null;
+  /** Id of the active check-in session — entries captured in it get a badge. */
+  currentSessionId?: string | null;
   readOnly?: boolean;
 }
 
@@ -46,13 +50,13 @@ const SEVERITY_COLORS: Record<string, string> = {
   severe: 'bg-red-100 text-red-800',
 };
 
-export function SymptomBuckets({ symptoms, onDelete, deletingId, readOnly }: SymptomBucketsProps): React.ReactNode {
+export function SymptomBuckets({ symptoms, onDelete, onEdit, deletingId, currentSessionId, readOnly }: SymptomBucketsProps): React.ReactNode {
   if (symptoms.length === 0) {
     return (
       <div className="bg-surface border border-text/10 rounded-xl p-6 text-center">
         <p className="text-text-muted text-sm">No symptoms recorded yet.</p>
         <p className="text-xs text-text-muted mt-1">
-          Use the form below to add what you are experiencing.
+          Anything you confirm during a check-in appears here automatically — or add one manually.
         </p>
       </div>
     );
@@ -83,7 +87,17 @@ export function SymptomBuckets({ symptoms, onDelete, deletingId, readOnly }: Sym
                 className="bg-white/60 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
               >
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-text">{entry.text}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium text-text">{entry.text}</p>
+                    {currentSessionId && entry.sessionId === currentSessionId && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Saved from this check-in
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-text-muted mt-0.5">Impact: {entry.impact}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -93,6 +107,14 @@ export function SymptomBuckets({ symptoms, onDelete, deletingId, readOnly }: Sym
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/80 text-text">
                     {entry.frequency.replace(/_/g, ' ')}
                   </span>
+                  {!readOnly && onEdit && (
+                    <button
+                      onClick={() => onEdit(entry)}
+                      className="text-xs text-primary hover:text-primary-light font-medium"
+                    >
+                      Edit
+                    </button>
+                  )}
                   {!readOnly && onDelete && (
                     <button
                       onClick={() => onDelete(entry.id)}

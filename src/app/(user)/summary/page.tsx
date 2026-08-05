@@ -5,9 +5,6 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Layout } from '@/components/Layout';
 import { BRAND } from '@/lib/config/brand';
-import { useAuth } from '@/components/auth/AuthProvider';
-import { SymptomRecorder, type SymptomFormData } from '@/components/symptoms/SymptomRecorder';
-import { SymptomBuckets } from '@/components/symptoms/SymptomBuckets';
 import type {
   StructuredCheckIn,
   CompleteCheckInResponse,
@@ -78,16 +75,6 @@ const PROVISIONAL_ROUTING_DISPLAY: Record<RoutingState, string> = {
   URGENT_SUPPORT_INFORMATION: 'Support information',
   HUMAN_REVIEW_REQUIRED: 'Additional review may be needed',
 };
-
-interface SymptomEntry {
-  id: string;
-  text: string;
-  category: string;
-  severity: string;
-  frequency: string;
-  impact: string;
-  createdAt: string;
-}
 
 // ---------------------------------------------------------------------------
 // Helper components
@@ -346,7 +333,6 @@ function SummaryPageContent(): React.ReactNode {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('sessionId');
-  const { user } = useAuth();
 
   // Phase state
   const [loading, setLoading] = useState(true);
@@ -369,13 +355,6 @@ function SummaryPageContent(): React.ReactNode {
   const [confirming, setConfirming] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
-  // Symptoms
-  const [symptoms, setSymptoms] = useState<SymptomEntry[]>([]);
-  const [symptomsLoading, setSymptomsLoading] = useState(false);
-  const [symptomSaving, setSymptomSaving] = useState(false);
-  const [symptomDeletingId, setSymptomDeletingId] = useState<string | null>(null);
-  const [showSymptomRecorder, setShowSymptomRecorder] = useState(false);
-
   // Developer info
   const [devInfo, setDevInfo] = useState<{ modelVersion: string; promptVersion: string; policyVersion: string }>({
     modelVersion: '',
@@ -392,31 +371,6 @@ function SummaryPageContent(): React.ReactNode {
     crossSessionInsight: string | null;
   }
   const [companionContext, setCompanionContext] = useState<CompanionContext | null>(null);
-
-  // Load symptoms for logged-in users
-  const loadSymptoms = useCallback(async () => {
-    if (!user) return;
-    setSymptomsLoading(true);
-    try {
-      const res = await fetch('/api/symptoms');
-      if (res.ok) {
-        const data = await res.json();
-        setSymptoms((data.symptoms ?? []).map((s: SymptomEntry) => ({
-          ...s,
-          createdAt: typeof s.createdAt === 'string' ? s.createdAt : new Date(s.createdAt).toISOString(),
-        })));
-      }
-    } catch {
-      // Silent fail — symptoms are supplementary.
-    } finally {
-      setSymptomsLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- symptom list is loaded from external API on mount
-    void loadSymptoms();
-  }, [loadSymptoms]);
 
   const applyCompleteResponse = useCallback((data: CompleteCheckInResponse) => {
     setDraftSummary(data.draftSummary);
@@ -594,20 +548,81 @@ function SummaryPageContent(): React.ReactNode {
     }
   }, [sessionId, router, loadDraft]);
 
+  // Session recovery — in-memory check-in sessions are wiped when the dev
+  // server restarts, but this page still renders from the browser's cached
+  // answers. Instead of forcing the user to redo the check-in, spin up a
+  // fresh server session and re-run /complete against it so the summary can
+  // be regenerated or confirmed. Answers are never lost.
+  const recoverSession = async (answers: StructuredCheckIn): Promise<string> => {
+    let mode: 'CONNECTED_CARE' | 'GUEST' = 'GUEST';
+    try {
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.ok) mode = 'CONNECTED_CARE';
+    } catch {
+      // Stay GUEST.
+    }
+
+    const createRes = await fetch('/api/check-ins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    if (!createRes.ok) throw new Error('Failed to confirm summary.');
+    const created = await createRes.json() as { id: string };
+
+    const completeRes = await fetch(`/api/check-ins/${created.id}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ structuredAnswers: answers }),
+    });
+    if (completeRes.ok) {
+      applyCompleteResponse((await completeRes.json()) as CompleteCheckInResponse);
+    }
+
+    // Point the URL and the local cache at the recovered session.
+    window.history.replaceState(null, '', `/summary?sessionId=${created.id}`);
+    try {
+      const stored = sessionStorage.getItem('manas-check-in');
+      if (stored) {
+        sessionStorage.setItem(
+          'manas-check-in',
+          JSON.stringify({ ...(JSON.parse(stored) as Record<string, unknown>), sessionId: created.id }),
+        );
+      }
+    } catch {
+      // Ignore.
+    }
+    return created.id;
+  };
+
   // Confirm handler
   const handleConfirm = async (): Promise<void> => {
     if (!sessionId || !formData) return;
     setConfirming(true);
     setError(null);
     try {
-      const res = await fetch(`/api/check-ins/${sessionId}/confirm`, {
+      let confirmSessionId = sessionId;
+      let res = await fetch(`/api/check-ins/${confirmSessionId}/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           confirmedSummary: formData,
-          originalDraft: draftSummary,
+          draftSummary: draftSummary ?? undefined,
         }),
       });
+      if (!res.ok) {
+        // Original server session is gone (e.g. server restarted) — recover
+        // with a fresh session and retry, keeping all reviewed answers.
+        confirmSessionId = await recoverSession(formData);
+        res = await fetch(`/api/check-ins/${confirmSessionId}/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            confirmedSummary: formData,
+            draftSummary: draftSummary ?? undefined,
+          }),
+        });
+      }
       if (!res.ok) throw new Error('Failed to confirm summary.');
       const data: ConfirmCheckInResponse = await res.json();
       setConfirmResponse(data);
@@ -638,11 +653,21 @@ function SummaryPageContent(): React.ReactNode {
     setError(null);
     regenVariantRef.current = (regenVariantRef.current % 3) + 1;
     try {
-      const res = await fetch(`/api/check-ins/${sessionId}/complete`, {
+      let regenSessionId = sessionId;
+      let res = await fetch(`/api/check-ins/${regenSessionId}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ structuredAnswers: formData, variant: regenVariantRef.current }),
       });
+      if (!res.ok) {
+        // Same recovery path as confirm — stale server session.
+        regenSessionId = await recoverSession(formData);
+        res = await fetch(`/api/check-ins/${regenSessionId}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ structuredAnswers: formData, variant: regenVariantRef.current }),
+        });
+      }
       if (!res.ok) throw new Error('Failed to regenerate summary.');
       const data: CompleteCheckInResponse = await res.json();
       setAiNarrative(data.aiNarrative);
@@ -657,52 +682,6 @@ function SummaryPageContent(): React.ReactNode {
       setError(e instanceof Error ? e.message : 'Failed to regenerate summary.');
     } finally {
       setRegenerating(false);
-    }
-  };
-
-  // Symptom handlers
-  const handleRecordSymptom = async (data: SymptomFormData): Promise<void> => {
-    if (!user) return;
-    setSymptomSaving(true);
-    try {
-      const res = await fetch('/api/symptoms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...data,
-          sessionId: sessionId ?? undefined,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to save symptom.');
-      const result = await res.json();
-      setSymptoms((prev) => [
-        ...prev,
-        {
-          ...result.symptom,
-          createdAt: typeof result.symptom.createdAt === 'string'
-            ? result.symptom.createdAt
-            : new Date(result.symptom.createdAt).toISOString(),
-        },
-      ]);
-      setShowSymptomRecorder(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save symptom.');
-    } finally {
-      setSymptomSaving(false);
-    }
-  };
-
-  const handleDeleteSymptom = async (id: string): Promise<void> => {
-    if (!user) return;
-    setSymptomDeletingId(id);
-    try {
-      const res = await fetch(`/api/symptoms/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete symptom.');
-      setSymptoms((prev) => prev.filter((s) => s.id !== id));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete symptom.');
-    } finally {
-      setSymptomDeletingId(null);
     }
   };
 
@@ -755,6 +734,35 @@ function SummaryPageContent(): React.ReactNode {
   }
 
   const isOfflineSession = !sessionId || sessionId.startsWith('offline-');
+
+  // Next-step journey order is driven by the confirmed routing result —
+  // deterministic, never decided by the conversational model.
+  const professionalFirst = confirmResponse !== null && confirmResponse.routingState !== 'GENERAL_WELLBEING';
+  const moduleStep = {
+    testId: 'continue-module',
+    href: '/module/pause-reflect',
+    title: 'Pause & Reflect',
+    description: 'A 5-minute guided exercise to slow down, notice your state, and reflect on what you need right now.',
+    cta: 'Start the exercise',
+    icon: (
+      <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+      </svg>
+    ),
+  };
+  const professionalStep = {
+    testId: 'browse-professionals',
+    href: '/professionals',
+    title: 'Connect with a professional',
+    description: 'Browse qualified professionals who can provide personalised support.',
+    cta: 'Browse professionals',
+    icon: (
+      <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+      </svg>
+    ),
+  };
+  const orderedNextSteps = professionalFirst ? [professionalStep, moduleStep] : [moduleStep, professionalStep];
 
   return (
     <Layout>
@@ -934,51 +942,6 @@ function SummaryPageContent(): React.ReactNode {
                 </div>
               </div>
 
-              {/* Symptom buckets */}
-              <section>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-text">What you are experiencing</h2>
-                  {user && (
-                    <button
-                      onClick={() => setShowSymptomRecorder((v) => !v)}
-                      className="text-sm px-4 py-2 bg-secondary/10 text-text rounded-lg hover:bg-secondary/20 transition-colors"
-                    >
-                      {showSymptomRecorder ? 'Close recorder' : 'Record symptom'}
-                    </button>
-                  )}
-                </div>
-                {!user && (
-                  <div className="bg-surface border border-text/10 rounded-xl p-4 text-center mb-4">
-                    <p className="text-sm text-text-muted mb-2">
-                      Sign in to record and organize what you are experiencing.
-                    </p>
-                    <Link href="/login" className="text-sm text-primary hover:underline font-medium">
-                      Sign in or create an account
-                    </Link>
-                  </div>
-                )}
-                {user && showSymptomRecorder && (
-                  <div className="mb-4">
-                    <SymptomRecorder
-                      onSubmit={(data) => void handleRecordSymptom(data)}
-                      onCancel={() => setShowSymptomRecorder(false)}
-                      loading={symptomSaving}
-                    />
-                  </div>
-                )}
-                {user && symptomsLoading ? (
-                  <div className="flex justify-center py-8">
-                    <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                  </div>
-                ) : (
-                  <SymptomBuckets
-                    symptoms={symptoms}
-                    onDelete={handleDeleteSymptom}
-                    deletingId={symptomDeletingId}
-                  />
-                )}
-              </section>
-
               {/* Provisional routing */}
               {provisionalRouting && (
                 <div data-testid="provisional-routing" className="bg-secondary/10 border border-secondary/30 rounded-lg p-4">
@@ -1109,41 +1072,6 @@ function SummaryPageContent(): React.ReactNode {
               </FieldCard>
             </div>
 
-            {/* Symptom buckets (confirmed) */}
-            <section className="mb-8">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-text">What you are experiencing</h2>
-                {user && (
-                  <button
-                    onClick={() => setShowSymptomRecorder((v) => !v)}
-                    className="text-sm px-4 py-2 bg-secondary/10 text-text rounded-lg hover:bg-secondary/20 transition-colors"
-                  >
-                    {showSymptomRecorder ? 'Close recorder' : 'Record symptom'}
-                  </button>
-                )}
-              </div>
-              {user && showSymptomRecorder && (
-                <div className="mb-4">
-                  <SymptomRecorder
-                    onSubmit={(data) => void handleRecordSymptom(data)}
-                    onCancel={() => setShowSymptomRecorder(false)}
-                    loading={symptomSaving}
-                  />
-                </div>
-              )}
-              {user && symptomsLoading ? (
-                <div className="flex justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                </div>
-              ) : (
-                <SymptomBuckets
-                  symptoms={symptoms}
-                  onDelete={handleDeleteSymptom}
-                  deletingId={symptomDeletingId}
-                />
-              )}
-            </section>
-
             {/* Final routing */}
             <div data-testid="final-routing" className="bg-primary/10 border border-primary/30 rounded-lg p-4 mb-6">
               <h3 className="text-lg font-semibold text-text mb-2">Your Routing Result</h3>
@@ -1155,6 +1083,63 @@ function SummaryPageContent(): React.ReactNode {
                   {ROUTING_DISPLAY[confirmResponse.routingState].description}
                 </p>
               )}
+            </div>
+
+            {/* Next steps — a guided journey shaped by the routing result */}
+            <div data-testid="next-steps" className="bg-surface border border-text/10 rounded-2xl p-6 mb-6">
+              <SectionHeader
+                icon={
+                  <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                }
+                title="Your next steps"
+                subtitle={professionalFirst
+                  ? 'Based on your routing result, connecting with a professional may be the most helpful next step — you set the pace.'
+                  : 'Based on your routing result, a moment of calm is a gentle next step — you set the pace.'}
+              />
+              <div className="space-y-3">
+                {orderedNextSteps.map((step, i) => (
+                  <Link
+                    key={step.href}
+                    data-testid={step.testId}
+                    href={step.href}
+                    className={`group flex items-center gap-4 rounded-xl border p-4 transition-all ${
+                      i === 0
+                        ? 'bg-primary/5 border-primary/30 hover:border-primary hover:shadow-md'
+                        : 'bg-background border-text/10 hover:border-primary/40 hover:shadow-sm'
+                    }`}
+                  >
+                    <span
+                      className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                        i === 0 ? 'bg-primary text-white' : 'bg-primary/10 text-primary'
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="flex-shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                      {step.icon}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-base font-semibold text-text">{step.title}</span>
+                      <span className="block text-sm text-text-muted mt-0.5">{step.description}</span>
+                    </span>
+                    <span className={`flex-shrink-0 hidden sm:flex items-center gap-1 text-sm font-medium transition-colors ${
+                      i === 0 ? 'text-primary' : 'text-text-muted group-hover:text-primary'
+                    }`}>
+                      {step.cta}
+                      <svg className="w-4 h-4 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </span>
+                  </Link>
+                ))}
+              </div>
+              <div className="mt-4 pt-4 border-t border-text/10 text-center">
+                <Link href="/" className="text-sm text-text-muted hover:text-primary transition-colors">
+                  ← Return home whenever you&rsquo;re ready
+                </Link>
+              </div>
             </div>
 
             {/* Developer info panel */}
@@ -1177,47 +1162,6 @@ function SummaryPageContent(): React.ReactNode {
                   <p>Policy version: <span className="font-mono">{devInfo.policyVersion || '—'}</span></p>
                 </div>
               )}
-            </div>
-
-            {/* Navigation */}
-            <div className="flex flex-col sm:flex-row gap-4 mb-8">
-              <Link
-                data-testid="continue-module"
-                href="/module/pause-reflect"
-                className="bg-primary text-white hover:bg-primary-light rounded-lg px-6 py-3 text-lg font-medium transition-colors text-center"
-              >
-                Continue to Pause & Reflect
-              </Link>
-              <Link
-                href="/"
-                className="text-primary hover:underline flex items-center justify-center px-6 py-3 text-lg font-medium"
-              >
-                Back to Home
-              </Link>
-            </div>
-
-            {/* Browse Professionals CTA */}
-            <div className="bg-surface border border-primary/40 rounded-xl shadow-sm p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <svg className="w-6 h-6 text-primary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                  <div>
-                    <h3 className="text-base font-semibold text-text">Connect with a Professional</h3>
-                    <p className="text-sm text-text-muted mt-1">
-                      Browse qualified professionals who can provide personalized support.
-                    </p>
-                  </div>
-                </div>
-                <Link
-                  data-testid="browse-professionals"
-                  href="/professionals"
-                  className="shrink-0 border border-primary text-primary hover:bg-primary hover:text-white rounded-lg px-5 py-2.5 font-medium transition-colors text-center"
-                >
-                  Browse Professionals
-                </Link>
-              </div>
             </div>
           </div>
         )}

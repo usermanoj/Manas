@@ -288,10 +288,25 @@ export function PauseReflectRunner({ module: mod }: { module: ModuleData }): Rea
               <div className="bg-surface border border-text/10 rounded-lg p-5">
                 <h3 className="text-sm font-medium text-text mb-2">Your reflection</h3>
                 <p className="text-sm text-text-muted italic">&ldquo;{reflection}&rdquo;</p>
+                <p className="text-xs text-text-muted/70 mt-3 flex items-start gap-1.5">
+                  <svg className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  <span>This reflection is private &mdash; it stays in this session and is never stored or shared by Manas.</span>
+                </p>
               </div>
             )}
 
-            <div className="flex items-center justify-center gap-3">
+            <div className="bg-surface border border-text/10 rounded-lg p-5">
+              <h3 className="text-sm font-medium text-text mb-2">Where to next?</h3>
+              <p className="text-sm text-text-muted">
+                You can repeat this exercise whenever you need a pause, browse professionals for
+                personalised support, or simply head home. Your confirmed summary stays saved and
+                waiting for you.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
               <button
                 type="button"
                 onClick={handleRestart}
@@ -304,11 +319,11 @@ export function PauseReflectRunner({ module: mod }: { module: ModuleData }): Rea
                 onClick={() => router.push('/professionals')}
                 className="px-6 py-2 border border-primary text-primary font-medium rounded-lg hover:bg-primary/5 transition-colors"
               >
-                Next: Browse Professionals
+                Browse Professionals
               </button>
               <Link
                 href="/"
-                className="px-6 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 transition-colors"
+                className="px-6 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 transition-colors text-center"
               >
                 Back to Home
               </Link>

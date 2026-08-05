@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { BRAND } from '@/lib/config/brand';
 import { ContactGate } from '@/components/providers/ContactGate';
@@ -38,29 +39,6 @@ interface HandoffState {
 }
 
 /**
- * Demo summary used when creating a new handoff.
- * Mirrors what a real check-in would produce.
- */
-const DEMO_SUMMARY: StructuredSummary = {
-  primary_concern: 'Work-related stress and burnout',
-  concern_duration: 'months',
-  sleep_impact: 'mild',
-  daily_functioning_impact: 'mild',
-  support_preference: 'professional_support',
-  feels_safe: 'yes',
-  key_points: [
-    'Feeling overwhelmed with workload',
-    'Difficulty switching off in the evenings',
-    'Mild sleep disruption 2–3 nights per week',
-  ],
-};
-
-const DEMO_EXCLUDED: string[] = [
-  'Personal relationship details shared on 2026-07-10',
-  'Financial stress mention on 2026-07-15',
-];
-
-/**
  * Compute a SHA-256 preview hash for the given summary + excluded entries.
  */
 async function computePreviewHash(summary: StructuredSummary, excluded: string[]): Promise<string> {
@@ -83,12 +61,15 @@ function HandoffPageContent(): React.ReactNode {
   const [consentGiven, setConsentGiven] = useState(false);
   const [sentConfirmation, setSentConfirmation] = useState(false);
   const [previewHash, setPreviewHash] = useState<string>('');
+  // True when the user has no confirmed check-in to seed a handoff from.
+  const [needsCheckIn, setNeedsCheckIn] = useState(false);
+  // When the draft summary came from — shown as a provenance note.
+  const [summarySource, setSummarySource] = useState<string | null>(null);
 
   // Compute hash whenever summary or excluded entries change
   useEffect(() => {
-    const summary = handoff?.structuredSummary ?? DEMO_SUMMARY;
-    const excluded = handoff?.excludedEntries ?? DEMO_EXCLUDED;
-    computePreviewHash(summary, excluded).then(setPreviewHash);
+    if (!handoff) return;
+    computePreviewHash(handoff.structuredSummary, handoff.excludedEntries).then(setPreviewHash);
   }, [handoff]);
 
   useEffect(() => {
@@ -131,14 +112,45 @@ function HandoffPageContent(): React.ReactNode {
           }
         }
 
-        // No existing handoff — create a new DRAFT
+        // No existing handoff — seed a new DRAFT from the user's latest
+        // confirmed check-in so the handoff always contains their own words.
+        const checkInsRes = await fetch('/api/check-ins');
+        let latestSummary: StructuredSummary | null = null;
+        let source: string | null = null;
+        if (checkInsRes.ok) {
+          const checkInData = await checkInsRes.json() as {
+            sessions: Array<{
+              structuredSummary: StructuredSummary | null;
+              completedAt: string | null;
+              startedAt: string;
+            }>;
+          };
+          const confirmed = (checkInData.sessions ?? [])
+            .filter((s) => s.structuredSummary !== null)
+            .sort(
+              (a, b) =>
+                new Date(b.completedAt ?? b.startedAt).getTime() -
+                new Date(a.completedAt ?? a.startedAt).getTime(),
+            );
+          if (confirmed.length > 0) {
+            latestSummary = confirmed[0].structuredSummary;
+            source = confirmed[0].completedAt ?? confirmed[0].startedAt;
+          }
+        }
+
+        if (!latestSummary) {
+          // Nothing confirmed yet — guide the user to complete a check-in.
+          if (!cancelled) setNeedsCheckIn(true);
+          return;
+        }
+
         const createRes = await fetch('/api/handoffs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             providerId,
-            structuredSummary: DEMO_SUMMARY,
-            excludedEntries: DEMO_EXCLUDED,
+            structuredSummary: latestSummary,
+            excludedEntries: [],
           }),
         });
         if (!createRes.ok) {
@@ -151,11 +163,12 @@ function HandoffPageContent(): React.ReactNode {
             id: created.id,
             status: created.status,
             version: created.version,
-            structuredSummary: DEMO_SUMMARY,
-            excludedEntries: DEMO_EXCLUDED,
+            structuredSummary: latestSummary,
+            excludedEntries: [],
             providerId,
             sentAt: null,
           });
+          setSummarySource(source);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Unknown error');
@@ -226,6 +239,31 @@ function HandoffPageContent(): React.ReactNode {
 
         {loading && <p className="text-text-muted">Loading handoff&hellip;</p>}
 
+        {!loading && needsCheckIn && !error && (
+          <div className="bg-surface border border-text/10 rounded-2xl p-8 text-center">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+              <svg className="w-7 h-7 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-text mb-2">Start with a check-in</h2>
+            <p className="text-sm text-text-muted max-w-md mx-auto mb-5">
+              A handoff shares <span className="font-medium text-text">your own confirmed summary</span> with
+              a professional &mdash; never placeholder text. Complete a check-in first and Manas will
+              prepare your handoff from it automatically.
+            </p>
+            <Link
+              href="/check-in"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white font-medium rounded-lg hover:bg-primary-light transition-colors"
+            >
+              Begin a check-in
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm mb-4">
             Error: {error}
@@ -237,7 +275,14 @@ function HandoffPageContent(): React.ReactNode {
 
             {/* Structured Summary */}
             <section>
-              <h2 className="text-lg font-medium text-text mb-3">Your Check-in Summary</h2>
+              <div className="flex items-baseline justify-between mb-3">
+                <h2 className="text-lg font-medium text-text">Your Check-in Summary</h2>
+                {summarySource && (
+                  <span className="text-xs text-text-muted">
+                    From your confirmed check-in &middot; {new Date(summarySource).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
               <div className={`bg-surface border border-text/10 rounded-lg p-5 ${isSent ? 'opacity-75' : ''}`}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <div>

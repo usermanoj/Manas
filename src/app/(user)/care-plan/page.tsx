@@ -59,6 +59,17 @@ function statusBadgeClass(status: string): string {
   }
 }
 
+/**
+ * Turn a clinician/provider ID like "provider-dr-maya-rao" into a readable name.
+ */
+function formatClinicianName(clinicianId: string): string {
+  return clinicianId
+    .replace(/^provider-/, '')
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 export default function CarePlanPage(): React.ReactNode {
   const [carePlan, setCarePlan] = useState<CarePlanData | null>(null);
   const [, setActiveVersion] = useState<VersionData | null>(null);
@@ -189,7 +200,10 @@ export default function CarePlanPage(): React.ReactNode {
               <div className="space-y-3">
                 <div>
                   <span className="text-sm font-medium text-text">Clinician:</span>
-                  <span className="text-sm text-text-muted ml-2">{carePlan.clinicianId}</span>
+                  <span className="text-sm text-text-muted ml-2">{formatClinicianName(carePlan.clinicianId)}</span>
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
+                    Fictional demonstration
+                  </span>
                 </div>
 
                 <div>
