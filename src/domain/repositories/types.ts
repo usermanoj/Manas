@@ -113,6 +113,8 @@ export interface Provider {
   credentialsNote: string;
   bio: string;
   isFictionalDemo: boolean;
+  /** Marks a genuine provider — displayed prominently as "Actual Profile" in the directory. */
+  isActualProfile?: boolean;
 }
 
 export interface Handoff {

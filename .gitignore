@@ -28,3 +28,6 @@ playwright-report/
 
 # temporary verification screenshots
 landing-*.png
+
+# local Vercel deploy helper scripts
+.vercel-tmp/

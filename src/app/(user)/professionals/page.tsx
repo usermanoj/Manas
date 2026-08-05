@@ -33,6 +33,8 @@ interface Provider {
   credentialsNote: string;
   bio: string;
   isFictionalDemo: boolean;
+  /** Marks a genuine provider — displayed prominently as "Actual Profile". */
+  isActualProfile?: boolean;
 }
 
 const PRICE_RANGES = [
@@ -115,13 +117,13 @@ function formatClock(minutes: number): string {
 }
 
 function utcOffsetLabel(timeZone: string): string {
-  // Use today's offset so the label reflects current DST (e.g. EST shows UTC−4 in summer).
+  // Use today's offset so the label reflects current DST (e.g. EST shows GMT−4 in summer).
   const offset = tzOffsetMinutes(timeZone, Date.now());
   const sign = offset >= 0 ? '+' : '−';
   const abs = Math.abs(offset);
   const h = Math.floor(abs / 60);
   const m = abs % 60;
-  return `UTC${sign}${h}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''}`;
+  return `GMT${sign}${h}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''}`;
 }
 
 function availabilityInTz(p: Provider, tz: TimezoneOption): string {
@@ -175,7 +177,11 @@ function ProviderCard({ p, index, tz }: { p: Provider; index: number; tz: Timezo
   return (
     <div
       data-testid={`provider-card-${p.id}`}
-      className="group bg-surface rounded-2xl border border-text/10 shadow-sm hover:shadow-xl hover:border-primary/30 hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"
+      className={`group bg-surface rounded-2xl border shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden ${
+        p.isActualProfile
+          ? 'border-primary/30 ring-1 ring-primary/20 hover:border-primary/50'
+          : 'border-text/10 hover:border-primary/30'
+      }`}
     >
       {/* Accent strip */}
       <div className={`h-1 bg-gradient-to-r ${AVATAR_GRADIENTS[index % AVATAR_GRADIENTS.length]}`} />
@@ -193,6 +199,14 @@ function ProviderCard({ p, index, tz }: { p: Provider; index: number; tz: Timezo
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-semibold text-text leading-tight">{p.name}</h2>
+              {p.isActualProfile ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide text-white bg-gradient-to-r from-primary to-primary-light shadow-md shadow-primary/25">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2} aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  Actual Profile
+                </span>
+              ) : (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/70">
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                   <path
@@ -203,6 +217,7 @@ function ProviderCard({ p, index, tz }: { p: Provider; index: number; tz: Timezo
                 </svg>
                 Demo profile
               </span>
+              )}
             </div>
             <p className="text-sm font-medium text-primary mt-0.5">{p.title}</p>
             <p className="text-xs text-text-muted mt-1">{p.credentialsNote}</p>
@@ -350,9 +365,9 @@ export default function ProfessionalsPage(): React.ReactNode {
             {/* Trust signals */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
-                { icon: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z', text: 'Browse freely — no account needed' },
-                { icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z', text: 'You control exactly what is shared' },
-                { icon: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', text: 'Fictional demo profiles, no real payments' },
+                { icon: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268-2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z', text: 'Browse freely — no account' },
+                { icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z', text: 'You control what is shared' },
+                { icon: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', text: 'Actual profiles and demo profiles' },
               ].map((item) => (
                 <div
                   key={item.text}

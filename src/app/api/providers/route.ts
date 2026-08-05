@@ -37,6 +37,7 @@ export async function GET(): Promise<NextResponse> {
         credentialsNote: p.credentialsNote,
         bio: p.bio,
         isFictionalDemo: p.isFictionalDemo,
+        isActualProfile: p.isActualProfile,
       })),
     });
   } catch {

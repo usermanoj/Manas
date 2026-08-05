@@ -93,7 +93,7 @@ export const SEED_PROFESSIONAL_ACCOUNTS: ProfessionalAccount[] = [
 
 // ─── Providers (all isFictionalDemo: true) ─────────────────────────────────────
 
-export const SEED_PROVIDERS: Provider[] = [
+const SEED_PROVIDER_LIST: Provider[] = [
   {
     id: 'provider-aekta-brahmbhatt',
     profileId: 'profile-aekta-brahmbhatt',
@@ -115,9 +115,10 @@ export const SEED_PROVIDERS: Provider[] = [
     nextAvailableDay: 'Tomorrow',
     nextAvailableHour: 10,
     nextAvailableMinute: 30,
-    credentialsNote: 'Licensed Counsellor & Play Therapist — fictional demo provider',
+    credentialsNote: 'Licensed Counsellor & Play Therapist',
     bio: 'Aekta Brahmbhatt is a counsellor and psychologist specialising in play therapy. She helps children and families express emotions, build resilience, and navigate stress through creative, age-appropriate techniques.',
     isFictionalDemo: true,
+    isActualProfile: true,
   },
   {
     id: 'provider-dr-maya-rao',
@@ -364,6 +365,29 @@ export const SEED_PROVIDERS: Provider[] = [
     isFictionalDemo: true,
   },
 ];
+
+/**
+ * Curated directory order: the actual profile first, then a flagship English
+ * profile, then Singapore's language diversity (Singlish, Mandarin, Malay,
+ * Tamil), then Hindi-speaking profiles, then the remaining English-only ones.
+ */
+const PROVIDER_DISPLAY_ORDER = [
+  'provider-aekta-brahmbhatt',
+  'provider-dr-sophie-whitmore',
+  'provider-marcus-yeo',
+  'provider-dr-tan-wei-lin',
+  'provider-nurul-aisyah',
+  'provider-kavitha-selvam',
+  'provider-dr-maya-rao',
+  'provider-dr-vikram-singh',
+  'provider-priya-kapoor',
+  'provider-dr-neha-iyer',
+  'provider-dr-emily-carter',
+];
+
+export const SEED_PROVIDERS: Provider[] = [...SEED_PROVIDER_LIST].sort(
+  (a, b) => PROVIDER_DISPLAY_ORDER.indexOf(a.id) - PROVIDER_DISPLAY_ORDER.indexOf(b.id),
+);
 
 // ─── Content Modules ───────────────────────────────────────────────────────────
 
