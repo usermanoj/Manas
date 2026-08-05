@@ -1,29 +1,81 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthProvider';
 
 type AccessMode = 'guest' | 'connected';
 
 /**
- * Mode pills + "Begin Check-In" CTA for the landing page.
+ * Action bar for the marketing landing page.
  *
- * Guest Mode always goes straight to the check-in. Connected Care requires a
- * signed-in account: signed-out visitors are routed through the login page
- * first (returning to /check-in afterwards) so the mode is never silently
- * downgraded to guest.
+ * Signed-out visitors get the language/mode pills plus a gated CTA: Guest
+ * Mode goes straight to the check-in, Connected Care routes through the login
+ * page first so the mode is never silently downgraded.
+ *
+ * Signed-in users keep the card slim — a status chip, a short "My Space"
+ * shortcut to their personal home (/home), and the check-in CTA.
  */
 export function SetupBar(): React.ReactNode {
   const router = useRouter();
-  const { user, loading: authLoading, logout } = useAuth();
-  // null = no explicit choice yet; signed-in visitors then default to Connected
-  // Care, everyone else to Guest Mode.
+  const { user, logout } = useAuth();
+  // null = no explicit choice yet; signed-out visitors default to Guest Mode.
   const [chosenMode, setChosenMode] = useState<AccessMode | null>(null);
-  const mode: AccessMode = chosenMode ?? (!authLoading && user ? 'connected' : 'guest');
+  const mode: AccessMode = chosenMode ?? 'guest';
 
-  const signedOutConnected = mode === 'connected' && !authLoading && !user;
+  const signedOutConnected = mode === 'connected' && !user;
   const firstName = user?.displayName?.split(' ')[0] ?? '';
+
+  // Signed in — slim card: status, My Space shortcut, check-in CTA.
+  if (user) {
+    return (
+      <>
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          <span className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-4 py-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" aria-hidden="true" />
+            <span className="text-xs font-semibold text-primary">Signed in as {firstName} · Connected Care</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="text-[11px] font-medium text-text-muted hover:text-text underline-offset-2 hover:underline transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {/* Short shortcut into the personal home */}
+          <Link
+            href="/home"
+            data-testid="open-my-space"
+            className="group inline-flex items-center gap-2 rounded-2xl border border-primary/40 bg-surface px-7 py-3 text-sm font-semibold text-primary transition-all duration-300 hover:bg-primary hover:text-white hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/20 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 outline-none"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+            My Space
+            <svg className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </Link>
+
+          {/* CTA */}
+          <button
+            type="button"
+            onClick={() => router.push('/check-in')}
+            className="group inline-flex items-center gap-2 bg-gradient-to-r from-primary to-primary-light hover:from-primary-light hover:to-primary text-white font-semibold px-10 py-3 rounded-2xl text-sm shadow-lg shadow-primary/25 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/30 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 outline-none"
+          >
+            Begin Check-In
+            <svg className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </button>
+        </div>
+      </>
+    );
+  }
 
   const beginCheckIn = (): void => {
     if (mode === 'connected' && !user) {
@@ -42,22 +94,6 @@ export function SetupBar(): React.ReactNode {
 
   return (
     <>
-      {/* Signed-in status — makes the authenticated state visible on the landing page */}
-      {!authLoading && user && (
-        <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-4 py-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" aria-hidden="true" />
-          <span className="text-xs font-semibold text-primary">
-            Signed in as {firstName} · Connected Care ready
-          </span>
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="text-[11px] font-medium text-text-muted hover:text-text underline-offset-2 hover:underline transition-colors"
-          >
-            Sign out
-          </button>
-        </div>
-      )}
 
       <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
         {/* Language pills */}
