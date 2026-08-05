@@ -536,7 +536,8 @@ export default function ProfessionalsPage(): React.ReactNode {
         {!loading && !error && filteredProviders.length > 0 && (
           <div className="mt-10 text-center">
             <p className="text-xs text-text-muted leading-relaxed max-w-lg mx-auto">
-              Every profile above is a fictional demonstration. Requesting an intro creates a
+              Profiles marked &ldquo;Actual Profile&rdquo; are genuine professionals on the Manas network;
+              all others are fictional demonstrations. Requesting an intro creates a
               consent-controlled handoff — nothing is shared without your explicit approval.
             </p>
           </div>

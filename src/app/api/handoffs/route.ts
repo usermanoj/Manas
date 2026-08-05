@@ -26,6 +26,7 @@ export async function GET(): Promise<NextResponse> {
         providerId: h.providerId,
         status: h.status,
         version: h.version,
+        createdAt: h.createdAt ? new Date(h.createdAt).toISOString() : null,
         sentAt: h.sentAt ? new Date(h.sentAt).toISOString() : null,
         structuredSummary: h.structuredSummary,
         excludedEntries: h.excludedEntries,
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         id: handoff.id,
         status: handoff.status,
         version: handoff.version,
-        createdAt: new Date().toISOString(),
+        createdAt: handoff.createdAt ? handoff.createdAt.toISOString() : new Date().toISOString(),
       },
       { status: 201 },
     );

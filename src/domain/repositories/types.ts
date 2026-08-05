@@ -124,6 +124,8 @@ export interface Handoff {
   status: string;
   structuredSummary: StructuredCheckIn;
   excludedEntries: string[];
+  /** When the draft was created — audit/tracking for multiple interactions. */
+  createdAt?: Date;
   sentAt?: Date;
   version: number;
 }

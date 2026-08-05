@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { BRAND } from '@/lib/config/brand';
 import { ContactGate } from '@/components/providers/ContactGate';
+import { WELLBEING_TECHNIQUES } from '@/domain/wellbeing/technique-library';
+import { TechniqueCard, CollapsibleSources } from '@/components/check-in/ProposedTechniques';
 
 const DEFAULT_PROVIDER_ID = 'provider-dr-maya-rao';
 
@@ -17,6 +19,8 @@ interface StructuredSummary {
   support_preference: string;
   feels_safe: string;
   key_points: string[];
+  /** Technique ids Manas suggested during the check-in — shared as context. */
+  techniquesUsed?: string[];
 }
 
 interface ProviderData {
@@ -26,6 +30,8 @@ interface ProviderData {
   languages: string[];
   focusAreas: string[];
   isFictionalDemo: boolean;
+  /** Marks a genuine provider — displayed as "Actual Profile", like the professionals page. */
+  isActualProfile?: boolean;
 }
 
 interface HandoffState {
@@ -35,7 +41,27 @@ interface HandoffState {
   structuredSummary: StructuredSummary;
   excludedEntries: string[];
   providerId: string;
+  createdAt: string | null;
   sentAt: string | null;
+}
+
+/**
+ * Handoffs may only be refreshed from newer check-ins while unsent — once
+ * sent, consent is bound to that exact immutable version.
+ */
+const REFRESHABLE_STATUSES = new Set(['DRAFT', 'USER_REVIEW']);
+
+function summariesEqual(a: StructuredSummary | null | undefined, b: StructuredSummary): boolean {
+  if (!a) return false;
+  return (
+    a.primary_concern === b.primary_concern &&
+    a.concern_duration === b.concern_duration &&
+    a.sleep_impact === b.sleep_impact &&
+    a.daily_functioning_impact === b.daily_functioning_impact &&
+    a.support_preference === b.support_preference &&
+    a.feels_safe === b.feels_safe &&
+    JSON.stringify(a.key_points ?? []) === JSON.stringify(b.key_points ?? [])
+  );
 }
 
 /**
@@ -47,6 +73,23 @@ async function computePreviewHash(summary: StructuredSummary, excluded: string[]
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Format an ISO timestamp for audit display with an explicit GMT offset label
+ * (e.g. "5 Aug 2026, 14:32 GMT+8") so interactions are unambiguous.
+ */
+function formatAuditTimestamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const offsetMin = -d.getTimezoneOffset();
+  const sign = offsetMin >= 0 ? '+' : '−';
+  const h = Math.floor(Math.abs(offsetMin) / 60);
+  const m = Math.abs(offsetMin) % 60;
+  const gmt = `GMT${sign}${h}${m > 0 ? `:${String(m).padStart(2, '0')}` : ''}`;
+  const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return `${date}, ${time} ${gmt}`;
 }
 
 function HandoffPageContent(): React.ReactNode {
@@ -88,35 +131,20 @@ function HandoffPageContent(): React.ReactNode {
 
         // Look for existing handoff
         const listRes = await fetch('/api/handoffs');
+        let existing: (HandoffState & { createdAt?: string }) | null = null;
         if (listRes.ok) {
           const listData = await listRes.json();
-          const existing = (listData.handoffs ?? []).find(
+          existing = (listData.handoffs ?? []).find(
             (h: HandoffState & { providerId: string }) =>
               h.providerId === providerId,
-          );
-          if (existing) {
-            if (!cancelled) {
-              setHandoff({
-                id: existing.id,
-                status: existing.status,
-                version: existing.version,
-                structuredSummary: existing.structuredSummary as StructuredSummary,
-                excludedEntries: existing.excludedEntries as string[],
-                providerId: existing.providerId,
-                sentAt: existing.sentAt,
-              });
-              if (existing.status === 'SENT') setSentConfirmation(true);
-              setLoading(false);
-            }
-            return;
-          }
+          ) ?? null;
         }
 
-        // No existing handoff — seed a new DRAFT from the user's latest
-        // confirmed check-in so the handoff always contains their own words.
+        // Latest confirmed check-in — the source of truth for the handoff
+        // content whenever the handoff has not been sent yet.
         const checkInsRes = await fetch('/api/check-ins');
         let latestSummary: StructuredSummary | null = null;
-        let source: string | null = null;
+        let latestSource: string | null = null;
         if (checkInsRes.ok) {
           const checkInData = await checkInsRes.json() as {
             sessions: Array<{
@@ -125,18 +153,78 @@ function HandoffPageContent(): React.ReactNode {
               startedAt: string;
             }>;
           };
-          const confirmed = (checkInData.sessions ?? [])
+          const confirmedSessions = (checkInData.sessions ?? [])
             .filter((s) => s.structuredSummary !== null)
             .sort(
               (a, b) =>
                 new Date(b.completedAt ?? b.startedAt).getTime() -
                 new Date(a.completedAt ?? a.startedAt).getTime(),
             );
-          if (confirmed.length > 0) {
-            latestSummary = confirmed[0].structuredSummary;
-            source = confirmed[0].completedAt ?? confirmed[0].startedAt;
+          if (confirmedSessions.length > 0) {
+            latestSummary = confirmedSessions[0].structuredSummary;
+            latestSource = confirmedSessions[0].completedAt ?? confirmedSessions[0].startedAt;
           }
         }
+
+        if (existing) {
+          const unsentAndRefreshable =
+            REFRESHABLE_STATUSES.has(existing.status) &&
+            latestSummary !== null &&
+            !summariesEqual(existing.structuredSummary, latestSummary);
+
+          if (unsentAndRefreshable) {
+            // A newer confirmed check-in exists — refresh the unsent draft so
+            // the handoff always reflects the user's exact confirmed entries.
+            const patchRes = await fetch(`/api/handoffs/${existing.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ structuredSummary: latestSummary }),
+            });
+            if (patchRes.ok) {
+              const patched = await patchRes.json();
+              if (!cancelled) {
+                setHandoff({
+                  id: existing.id,
+                  status: patched.status,
+                  version: patched.version,
+                  structuredSummary: latestSummary as StructuredSummary,
+                  excludedEntries: existing.excludedEntries,
+                  providerId: existing.providerId,
+                  createdAt: existing.createdAt ?? null,
+                  sentAt: existing.sentAt,
+                });
+                setSummarySource(latestSource);
+                setLoading(false);
+              }
+              return;
+            }
+            // PATCH failed (e.g. became immutable) — fall through and show as-is.
+          }
+
+          if (!cancelled) {
+            setHandoff({
+              id: existing.id,
+              status: existing.status,
+              version: existing.version,
+              structuredSummary: existing.structuredSummary as StructuredSummary,
+              excludedEntries: existing.excludedEntries as string[],
+              providerId: existing.providerId,
+              createdAt: existing.createdAt ?? null,
+              sentAt: existing.sentAt,
+            });
+            if (existing.status === 'SENT') {
+              setSentConfirmation(true);
+            } else if (latestSummary && summariesEqual(existing.structuredSummary, latestSummary)) {
+              // Unsent and already in sync — show where the content came from.
+              setSummarySource(latestSource);
+            }
+            setLoading(false);
+          }
+          return;
+        }
+
+        // No existing handoff — seed a new DRAFT from the user's latest
+        // confirmed check-in so the handoff always contains their own words.
 
         if (!latestSummary) {
           // Nothing confirmed yet — guide the user to complete a check-in.
@@ -166,9 +254,10 @@ function HandoffPageContent(): React.ReactNode {
             structuredSummary: latestSummary,
             excludedEntries: [],
             providerId,
+            createdAt: created.createdAt ?? new Date().toISOString(),
             sentAt: null,
           });
-          setSummarySource(source);
+          setSummarySource(latestSource);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Unknown error');
@@ -223,6 +312,27 @@ function HandoffPageContent(): React.ReactNode {
 
   const isSent = sentConfirmation || handoff?.status === 'SENT';
   const providerName = provider?.name ?? 'Dr. Maya Rao';
+  const isActualProvider = Boolean(provider?.isActualProfile);
+
+  // Resolve the technique ids Manas suggested during the check-in so the
+  // professional sees the same practices the user was offered.
+  const proposedPractices = WELLBEING_TECHNIQUES.filter(
+    (t) => handoff?.structuredSummary.techniquesUsed?.includes(t.id),
+  );
+  // Aggregate + dedupe the practices' citations for the Sources panel,
+  // mirroring the linked sources shown to the user on the summary page.
+  const practiceCitations = (() => {
+    const seen = new Set<string>();
+    const list: Array<{ source: string; title?: string; url?: string; year?: string; description?: string }> = [];
+    for (const t of proposedPractices) {
+      for (const c of t.citations) {
+        if (seen.has(c.source)) continue;
+        seen.add(c.source);
+        list.push(c);
+      }
+    }
+    return list;
+  })();
 
   return (
     <Layout>
@@ -272,6 +382,26 @@ function HandoffPageContent(): React.ReactNode {
 
         {!loading && handoff && (
           <div className="space-y-6">
+
+            {/* Tracking strip — timestamps for audit & tracing across interactions */}
+            <div data-testid="handoff-tracking" className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-surface border border-text/10 rounded-xl px-4 py-2.5 text-xs text-text-muted">
+              {handoff.createdAt && (
+                <span>
+                  <span className="font-semibold text-text">Prepared:</span> {formatAuditTimestamp(handoff.createdAt)}
+                </span>
+              )}
+              {handoff.sentAt && (
+                <span>
+                  <span className="font-semibold text-text">Submitted:</span> {formatAuditTimestamp(handoff.sentAt)}
+                </span>
+              )}
+              <span>
+                <span className="font-semibold text-text">Version:</span> v{handoff.version}
+              </span>
+              <span>
+                <span className="font-semibold text-text">Status:</span> {handoff.status.replace(/_/g, ' ')}
+              </span>
+            </div>
 
             {/* Structured Summary */}
             <section>
@@ -324,15 +454,48 @@ function HandoffPageContent(): React.ReactNode {
               </div>
             </section>
 
+            {/* Proposed Practices — techniques Manas suggested during the check-in */}
+            {proposedPractices.length > 0 && (
+              <section>
+                <div className="flex items-baseline justify-between mb-3">
+                  <h2 className="text-lg font-medium text-text">Proposed Practices</h2>
+                  <span className="text-xs text-text-muted">Suggested by Manas during the check-in</span>
+                </div>
+                <div className={`bg-surface border border-text/10 rounded-lg p-5 ${isSent ? 'opacity-75' : ''}`}>
+                  <p className="text-xs text-text-muted mb-4">
+                    Tap a practice to expand its steps. These were suggested to the user by the Manas
+                    companion during the check-in and are shown here exactly as presented to them &mdash;
+                    educational, evidence-informed self-help material, not a prescription or clinically
+                    reviewed guidance.
+                  </p>
+                  <div className="space-y-3">
+                    {proposedPractices.map((t) => (
+                      <TechniqueCard key={t.id} technique={t} />
+                    ))}
+                  </div>
+                  <CollapsibleSources citations={practiceCitations} />
+                </div>
+              </section>
+            )}
+
             {/* Destination Provider */}
             <section>
               <h2 className="text-lg font-medium text-text mb-3">Destination Provider</h2>
-              <div className="bg-surface border border-text/10 rounded-lg p-5">
+              <div className={`bg-surface border rounded-lg p-5 ${isActualProvider ? 'border-primary/30 ring-1 ring-primary/20' : 'border-text/10'}`}>
                 <div className="flex items-center gap-3 mb-2">
                   <p className="text-sm font-medium text-text">{providerName}</p>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
-                    Fictional Provider
-                  </span>
+                  {isActualProvider ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide text-white bg-gradient-to-r from-primary to-primary-light shadow-sm shadow-primary/25">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2} aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                      Actual Profile
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-800">
+                      Fictional Provider
+                    </span>
+                  )}
                 </div>
                 {provider && (
                   <div className="text-sm text-text-muted space-y-1">
@@ -342,7 +505,9 @@ function HandoffPageContent(): React.ReactNode {
                   </div>
                 )}
                 <p className="mt-3 text-xs text-text-muted italic">
-                  This is a fictional demonstration provider. No real clinician is linked to this record.
+                  {isActualProvider
+                    ? 'This is an actual professional profile on the Manas network. With your consent, this handoff shares your approved summary with this professional.'
+                    : 'This is a fictional demonstration provider. No real clinician is linked to this record.'}
                 </p>
               </div>
             </section>
@@ -395,15 +560,19 @@ function HandoffPageContent(): React.ReactNode {
                     />
                     <label htmlFor="consent-checkbox" className="text-sm text-text cursor-pointer">
                       I understand and agree to share this exact handoff version with{' '}
-                      <span className="font-semibold">{providerName}</span> within this fictional
-                      demonstration workspace.
+                      <span className="font-semibold">{providerName}</span>
+                      {isActualProvider
+                        ? ', an actual professional on the Manas network.'
+                        : ' within this fictional demonstration workspace.'}
                     </label>
                   </div>
 
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                     <p className="text-xs text-amber-800">
                       <strong>Consent notice:</strong> Your consent applies to this exact handoff
-                      version and fictional destination. No real clinician has received or reviewed it.
+                      version{isActualProvider
+                        ? ' only. You can exclude entries above before sending.'
+                        : ' and fictional destination. No real clinician has received or reviewed it.'}
                     </p>
                   </div>
 
@@ -428,14 +597,15 @@ function HandoffPageContent(): React.ReactNode {
                       SENT
                     </span>
                     {handoff.sentAt && (
-                      <span className="text-xs text-text-muted">
-                        at {new Date(handoff.sentAt).toLocaleString()}
+                      <span className="text-sm text-green-800 font-medium">
+                        {formatAuditTimestamp(handoff.sentAt)}
                       </span>
                     )}
                   </div>
                   <p className="text-sm text-green-800 font-medium">
-                    Your approved handoff has been sent within this fictional demonstration workspace.
-                    No real clinician has received or reviewed it.
+                    {isActualProvider
+                      ? `Your approved handoff has been sent to ${providerName}. They will see only the information in this exact version.`
+                      : 'Your approved handoff has been sent within this fictional demonstration workspace. No real clinician has received or reviewed it.'}
                   </p>
                   <p className="text-xs text-green-700 mt-2">
                     This handoff is now read-only and immutable. Version {handoff.version}.

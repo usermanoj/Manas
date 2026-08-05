@@ -41,6 +41,7 @@ export class HandoffOrchestrator {
       status: 'DRAFT',
       structuredSummary,
       excludedEntries,
+      createdAt: new Date(),
       version: 1,
     };
 
